@@ -11,7 +11,11 @@
 // for jacobians x_J_y := Jacobian w.r.t reference point y expressed in basis x
 // for analytical jacobians x_JA_y := analytical Jacobian w.r.t reference point y expressed in basis x
 // for rotation matrices R_x_y := Rotation from basis y to basis x
+// for wrenches x_wrench_y := Wrench w.r.t reference point y expressed in basis x 
+// for vectors in general x_vector := vector expressed in basis x
+// p_x_y := arm from x to y
 // ee := reference point of interest (typically the tool tip)
+// wrist := tip of the 7th link of the Kuka LWR
 // T := euler kinematical matrix
 
 namespace lwr_controllers {
@@ -23,9 +27,10 @@ namespace lwr_controllers {
   {
     KinematicChainControllerBase<hardware_interface::EffortJointInterface>::init(robot, n);
 
-    // Extend the default chain with a fake segment in order to evaluate
+    // extend the default chain with a fake segment in order to evaluate
     // Jacobians, derivatives of jacobians and forward kinematics with respect to a given reference point
     // (typicallly the tool tip)
+    // the reference point is initialized by the inheriting class with a call to set_p_wrist_ee
     KDL::Joint fake_joint = KDL::Joint();
     KDL::Frame frame(KDL::Rotation::Identity(), p_wrist_ee_);
     KDL::Segment fake_segment(fake_joint, frame);
@@ -33,25 +38,18 @@ namespace lwr_controllers {
     extended_chain_.addSegment(fake_segment);
 
     // instantiate solvers
+    // gravity_ is a member of KinematicChainControllerBase
     dyn_param_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
     ee_jacobian_solver_.reset(new KDL::ChainJntToJacSolver(extended_chain_));
     wrist_jacobian_solver_.reset(new KDL::ChainJntToJacSolver(kdl_chain_));
     ee_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(extended_chain_));
     ee_jacobian_dot_solver_.reset(new KDL::ChainJntToJacDotSolver(extended_chain_));
     
-    // resize initial robot configuration q0
-    q0_.resize(kdl_chain_.getNrOfJoints());
-    // resize Coriolis vector
-    C_.resize(kdl_chain_.getNrOfJoints());
-    // resize joint space inertia matrix
-    B_.resize(kdl_chain_.getNrOfJoints());
-    // resize jacobians
-    base_J_wrist_.resize(kdl_chain_.getNrOfJoints());
-    // resize wrenches
+    // instantiate wrenches
     wrench_wrist_ = KDL::Wrench();
     base_wrench_wrist_ = KDL::Wrench();
 
-    // instantiate state and its derivatives (used in inheriting class)
+    // instantiate state and its derivatives
     ws_x_ = Eigen::VectorXd(6);
     ws_xdot_ = Eigen::VectorXd(6);
 
@@ -67,30 +65,44 @@ namespace lwr_controllers {
     return true;
   }
 
-  void CartesianInverseDynamicsController::starting(const ros::Time& time)
-  {
-    // save the current robot configuration
-    // required to compensate internal motion of the robot
-    for(size_t i=0; i<joint_handles_.size(); i++) 
-      q0_(i) = joint_handles_[i].getPosition();
-
-  }
+  void CartesianInverseDynamicsController::starting(const ros::Time& time) {}
 
   void CartesianInverseDynamicsController::update(const ros::Time& time, const ros::Duration& period)
   {
-    // get current configuration (position and velocity)
-    for(size_t i=0; i<joint_handles_.size(); i++) {
-      joint_msr_states_.q(i) = joint_handles_[i].getPosition();
-      joint_msr_states_.qdot(i) = joint_handles_[i].getVelocity();
-    }
+    // get current robot configuration (q and q dot)
+    for(size_t i=0; i<joint_handles_.size(); i++)
+      {
+	joint_msr_states_.q(i) = joint_handles_[i].getPosition();
+	joint_msr_states_.qdot(i) = joint_handles_[i].getVelocity();
+      }
 
-    // solvers
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+    // Joint Space Inertia Matrix B and Coriolis term C * q dot
+    // (solvers does not take into account anything past the wrist
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+    //
 
-    // evaluate the current B(q) (B is evaluated without taking into account anything past the wrist)
-    dyn_param_solver_->JntToMass(joint_msr_states_.q, B_);
+    // evaluate the current B(q)
+    KDL::JntSpaceInertiaMatrix B;
+    B.resize(kdl_chain_.getNrOfJoints());
+    dyn_param_solver_->JntToMass(joint_msr_states_.q, B);
 
-    // evaluate the current C(q) * q_dot (C is evaluated without taking into account anything past the wrist)
-    dyn_param_solver_->JntToCoriolis(joint_msr_states_.q, joint_msr_states_.qdot, C_);
+    // evaluate the current C(q) * q dot
+    KDL::JntArray C;
+    C.resize(kdl_chain_.getNrOfJoints());
+    dyn_param_solver_->JntToCoriolis(joint_msr_states_.q, joint_msr_states_.qdot, C);
+    
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+    // Geometric Jacobians
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+    //
 
     // evaluate the current geometric jacobian base_J_ee
     KDL::Jacobian base_J_ee;
@@ -98,30 +110,46 @@ namespace lwr_controllers {
     ee_jacobian_solver_->JntToJac(joint_msr_states_.q, base_J_ee);
 
     // evaluate the current geometric jacobian base_J_wrist
-    wrist_jacobian_solver_->JntToJac(joint_msr_states_.q, base_J_wrist_);
+    KDL::Jacobian base_J_wrist;
+    base_J_wrist.resize(kdl_chain_.getNrOfJoints());
+    wrist_jacobian_solver_->JntToJac(joint_msr_states_.q, base_J_wrist);
 
-    // evaluate the current homogeneous transformation from the base 
-    // to the point of interest (typically the tool tip) ee_fk_frame_
-    ee_fk_solver_->JntToCart(joint_msr_states_.q, ee_fk_frame_);
-
-
-    /////////////////////////////////////////////////////////////////////////
     //
-    // evaluate the analytical jacobian written w.r.t. the intermediate frame ws_JA_ee_
-    // ws_JA_ee_ = ws_TA * ws_J_ee
+    //////////////////////////////////////////////////////////////////////////////////
+
+    //////////////////////////////////////////////////////////////////////////////////
     //
-    /////////////////////////////////////////////////////////////////////////
+    // Forward Kinematics
+    //
+    //////////////////////////////////////////////////////////////////////////////////
     //
 
-    // get the current RPY attitude representation PHI from R_ws_base * ee_fk_frame_.M
+    KDL::Frame ee_fk_frame;
+    ee_fk_solver_->JntToCart(joint_msr_states_.q, ee_fk_frame);
+
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+    // Analytical Jacobian written w.r.t. the workspace frame ws_JA_ee
+    // ws_JA_ee = ws_TA * ws_J_ee
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+
+    // get the current RPY attitude representation PHI from R_ws_base * ee_fk_frame.M
     double yaw, pitch, roll;
-    R_ws_ee_ = R_ws_base_ * ee_fk_frame_.M;
+    R_ws_ee_ = R_ws_base_ * ee_fk_frame.M;
     R_ws_ee_.GetEulerZYX(yaw, pitch, roll);
     
-    // evaluate the transformation matrix between the geometric and analytical jacobian TA
+    // evaluate the transformation matrix between 
+    // the geometric and analytical jacobian TA
+    //
     // ws_TA = [eye(3), zeros(3);
     //        zeros(3), inv(T(PHI))]
     // where T is the Euler Kinematical Matrix
+    //
     Eigen::Matrix3d ws_T;
     eul_kin_RPY(pitch, yaw, ws_T);
     ws_TA_.block<3,3>(3,3) = ws_T.inverse();
@@ -131,34 +159,36 @@ namespace lwr_controllers {
     ws_J_ee.resize(kdl_chain_.getNrOfJoints());
     KDL::changeBase(base_J_ee, R_ws_base_, ws_J_ee);
 
-    ws_JA_ee_ = ws_TA_ * ws_J_ee.data;
+    Eigen::MatrixXd ws_JA_ee;
+    ws_JA_ee = ws_TA_ * ws_J_ee.data;
     //
-    ////////////////////////////////////////////////////////////////////////
-
-
-    ////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+  
+    //////////////////////////////////////////////////////////////////////////////////
     //
-    // evaluate the kinetic pseudo-energy BA (Siciliano p. 297)
+    // Kinetic pseudo-energy BA (Siciliano p. 297)
+    // (i.e. Operational Space Inertia Matrix)
     //
-    ////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //
 
-    // BA = inv(ws_JA_ee_ * B_inv * base_J_wrist')
-    BA_ = ws_JA_ee_ * B_.data.inverse() * base_J_wrist_.data.transpose();
-    BA_ = BA_.inverse();
+    // BA = inv(ws_JA_ee * B_inv * base_J_wrist')
+    Eigen::MatrixXd BA;
+    BA = ws_JA_ee * B.data.inverse() * base_J_wrist.data.transpose();
+    BA = BA.inverse();
 
     //
-    ////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
 
-
-    ////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
     //
-    // evaluate part of the Coriolis compensation in operational space
-    // BA * dot(ws_JA_ee_) * qdot
+    // Coriolis compensation in *Operational Space*
+    // BA * dot(ws_JA_ee) * qdot
     //
-    ////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
     //
     
-    // evaluation of dot(ws_JA_ee_) = d/dt{ws_TA} * ws_J_ee + ws_TA * d/dt{ws_J_ee}
+    // evaluation of dot(ws_JA_ee) = d/dt{ws_TA} * ws_J_ee + ws_TA * d/dt{ws_J_ee}
     //
     // where d/dt{ws_TA} = [d/dt{eye(3)}, d/dt{zeros(3)}; 
     //                      d/dt{zeros(3)}, d/dt{inv(T(PHI))}]
@@ -167,10 +197,11 @@ namespace lwr_controllers {
     //
     // and d/dt{ws_J_ee} = [R_ws_base_, zeros(3);
     //                      zeros(3), R_ws_base_] * d/dt{base_J_ee}
+    //
     
     // evaluate the derivative of the state using the analytical jacobian
     Eigen::Matrix3d ws_T_dot;
-    ws_xdot_ = ws_JA_ee_ * joint_msr_states_.qdot.data;
+    ws_xdot_ = ws_JA_ee * joint_msr_states_.qdot.data;
     eul_kin_RPY_dot(pitch, yaw, ws_xdot_(4), ws_xdot_(3), ws_T_dot);
     ws_TA_dot_.block<3,3>(3,3) = - ws_T.inverse() * ws_T_dot * ws_T.inverse();
 
@@ -185,53 +216,74 @@ namespace lwr_controllers {
     // and project it in the workspace frame
     ws_J_ee_dot.changeBase(R_ws_base_);
 
-    ws_JA_ee_dot_ = ws_TA_dot_ * ws_J_ee.data + ws_TA_ * ws_J_ee_dot.data;
+    Eigen::MatrixXd ws_JA_ee_dot;
+    ws_JA_ee_dot = ws_TA_dot_ * ws_J_ee.data + ws_TA_ * ws_J_ee_dot.data;
     //
-    ////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
 
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+    // project ft_sensor wrench in world frame
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+    //
 
-    ////////////////////////////////////////////////////////////////////////
+    Eigen::Matrix<double, 6,1> base_F_wrist;
+    base_wrench_wrist_ = ee_fk_frame.M * wrench_wrist_;
+    tf::wrenchKDLToEigen(base_wrench_wrist_, base_F_wrist);
+
     //
-    // evaluate force and torque compensation
-    // compensate for the weight of the tool
-    // base_wrench_wrist = [R_base_wrist_, zeros(3);
-    //                      zeros(3), R_base_wrist_] * wrench_wrist
+    //////////////////////////////////////////////////////////////////////////////////
+
+    //////////////////////////////////////////////////////////////////////////////////
     //
-    ////////////////////////////////////////////////////////////////////////
+    // evaluate dynamics inversion command TAU_FRI 
     //
-    
-    // project wrench onto world frame
-    base_wrench_wrist_ = ee_fk_frame_.M * wrench_wrist_;
-    tf::wrenchKDLToEigen(base_wrench_wrist_, base_F_wrist_);
-    
+    // inheriting controllers augment TAU_FRI by calling 
+    // set_command(desired_acceleration)
+    // so that TAU_FRI += command_filter * desired_accelration
     //
-    ////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+
+    tau_fri_ = C.data + base_J_wrist.data.transpose() *\
+      (base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
+    command_filter_ = base_J_wrist.data.transpose() * BA;
+
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+    // the following are possibly required by inheriting controllers
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+    //
 
     // evaluate position vector between the origin of the workspace frame and the end-effector
     KDL::Vector p_ws_ee;
-    p_ws_ee = R_ws_base_ * (ee_fk_frame_.p - p_base_ws_);
+    p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
     
-    // evaluate the state for the inheriting controller
+    // evaluate the state
     ws_x_ << p_ws_ee(0), p_ws_ee(1), p_ws_ee(2), yaw, pitch, roll;
+
+    // the derivative of the state 
+    // was already evaluated in the previous sections
+
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+
   }
 
   void CartesianInverseDynamicsController::set_command(Eigen::VectorXd& commanded_acceleration)
   {
-    // evaluate tau_FRI
-    double k_p_null = 1;
-    double k_d_null = 1;
-    Eigen::VectorXd tau_fri;
-    tau_fri = C_.data +\
-      base_J_wrist_.data.transpose() *\
-      (base_F_wrist_ + BA_ * (commanded_acceleration - ws_JA_ee_dot_ * joint_msr_states_.qdot.data)) +\
-      (Eigen::Matrix<double, 7, 7>::Identity() - base_J_wrist_.data.transpose() * BA_ * ws_JA_ee_ * B_.data.inverse())*
-      (k_p_null * (q0_.data - joint_msr_states_.q.data) - k_d_null * joint_msr_states_.qdot.data);
-      
+    // augment tau_fri with the desired command specified by the inheriting controller
+    tau_fri_ += command_filter_ * commanded_acceleration;
 
     // set joint efforts
     for(int i=0; i<kdl_chain_.getNrOfJoints(); i++)
       {
-	joint_handles_[i].setCommand(tau_fri(i));
+	joint_handles_[i].setCommand(tau_fri_(i));
 
 	// required to exploit the JOINT IMPEDANCE MODE of the kuka manipulator
 	joint_stiffness_handles_[i].setCommand(0);
@@ -244,9 +296,6 @@ namespace lwr_controllers {
   {
     KDL::Wrench wrench_wrist_topic;
     tf::wrenchMsgToKDL(msg->wrench, wrench_wrist_topic);
-
-    // // compensate for initial ft sensor calibration
-    // wrench_wrist_topic += ee_calibration_wrench_;
    
     // reverse the measured force so that wrench_wrist represents 
     // the force applied on the environment by the end-effector
