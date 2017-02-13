@@ -35,9 +35,9 @@ lwr:
     tip_name: lwr_7_link
     topic_name: /lwr/ft_sensor
     ft_sensor_offset: [0, 0, 0, 0, 0, 0]
+    base_tool_weight_com: [0, 0, 0, 0, 0, 0]
     p_wrist_toolcom: [0, 0, 0.1]
-    publish_rate: 1 #Hz
-    tool_mass: 1
+    publish_rate: 1000 #Hz
 
   # Cartesian Position Controller
   cartesian_position_controller:
@@ -55,9 +55,6 @@ lwr:
     p_wrist_ee: [0, 0, 0.03]
     p_base_ws: [-0.7, 0, 0.05]                                                                                                                
     ws_base_angles: [0, 0, 0]                                                                                                                 
-    p_wrist_ee_com: [0, 0, 0.005]
-    tool_mass: 0
-    initial_ft_sensor_wrench: [0, 0, 0, 0, 0, 0]
 
   arm_state_controller: 
     type: arm_state_controller/ArmStateController
