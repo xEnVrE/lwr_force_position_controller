@@ -37,7 +37,6 @@
         <geometry>
           <sphere radius="0.01" />
         </geometry>
-      <material name="Red"/>
       </visual>
 
       <collision>

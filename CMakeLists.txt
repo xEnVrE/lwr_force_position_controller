@@ -5,6 +5,8 @@ project(lwr_force_position_controllers)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  eigen_conversions
+  kdl_conversions
   controller_interface
   lwr_controllers
   roscpp
@@ -45,6 +47,8 @@ catkin_package(
     kdljacdot
     controller_interface
     lwr_controllers
+    kdl_conversions
+    eigen_conversions
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
 )
