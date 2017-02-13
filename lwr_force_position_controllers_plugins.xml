@@ -1,0 +1,31 @@
+<library path="lib/liblwr_force_position_controllers">
+
+  <class name="lwr_force_position_controllers/FtSensorController" type="lwr_controllers::FtSensorController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      Force Torque sensor testing (removing offset, compensating for tool weight, etc.)
+    </description>
+  </class>
+
+  <class name="lwr_force_position_controllers/CartesianPositionController" type="lwr_controllers::CartesianPositionController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      Implement a cartesian position controller using inverse joint dynamics and inverse kinematics
+    </description>
+  </class>
+
+  <class name="lwr_force_position_controllers/CartesianInverseDynamicsController" type="lwr_controllers::CartesianInverseDynamicsController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      Implement an inverse dynamics controller in operational space (the update() method is not implemented and should be implemented by inheriting
+      controllers that need dynamics inversion in operational space).
+    </description>
+  </class>
+
+  <class name="lwr_force_position_controllers/HybridImpedanceController" type="lwr_controllers::HybridImpedanceController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      Implement a hybrid impedance controller using the abstract controller CartesianInverseDynamicsController
+    </description>
+  </class>
+  
+
+
+
+</library>

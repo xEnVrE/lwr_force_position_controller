@@ -1,0 +1,117 @@
+<launch>
+	<!-- LAUNCH INTERFACE -->
+	
+	<!-- in case you have different robot configurations -->
+	<arg name="robot_name" default="single_lwr_robot"/>
+
+	<!-- the default is the simulator -->
+	<arg name="use_lwr_sim" default="true"/>
+	<param name="use_simulation" value="$(arg use_lwr_sim)"/>
+	
+	<!-- set the parameters for the real interface -->
+	<arg name="lwr_powered" default="false"/>
+	<arg name="port" default="49939"/>
+	<arg name="ip" default="192.168.0.10"/>
+	<arg name="file" default="$(find single_lwr_robot)/config/980241-FRI-Driver.init"/>
+
+	<arg name="t1_limits" default="false"/>
+	<arg name="controllers" default="joint_trajectory_controller"/>
+	<arg name="stopped_controllers" default="gravity_compensation_controller one_task_inverse_kinematics joint_impedance_controller cartesian_position_controller hybrid_impedance_controller"/>
+
+	<!-- in case you want to load moveit from here, it might be hard with the real HW though -->
+	<arg name="load_moveit" default="false"/>
+
+	<!-- set some ros tools -->
+	<arg name="use_rviz" default="false"/>
+	<arg name="gui" default="false" />
+
+	<!-- LAUNCH IMPLEMENTATION -->
+
+	<!-- the urdf/sdf parameter -->
+	<!--<param name="robot_description" command="$(find xacro)/xacro.py $(find single_lwr_robot)/robot/$(arg robot_name).urdf.xacro"/>-->
+    <param name="robot_description" command="$(find xacro)/xacro --inorder $(find lwr_force_position_controllers)/robot/vito.urdf.xacro"/>
+		
+	<!-- joint and robot state publishers of the full robot description -->
+	<node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
+		<rosparam param="source_list">[/lwr/joint_states]</rosparam>
+	</node>
+	<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+	
+	<group if="$(arg use_rviz)">
+		<!--<node name="lwr_rviz" pkg="rviz" type="rviz" respawn="false" args="-d $(find single_lwr_launch)/launch/rviz_config.rviz" output="screen"/>-->
+		<node name="lwr_rviz" pkg="rviz" type="rviz" respawn="false" args="-d $(find vito_description)/launch/rviz_config.rviz" output="screen"/>
+	</group>
+
+	<!-- robot simulation uses the full robot description -->
+	<group if="$(arg use_lwr_sim)">
+		<!-- spawn the robot in gazebo -->
+		<node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-param robot_description -urdf -model vito -x 0 -y 0 -z 1.0 -R 0 -P 0 -Y 0" respawn="false" output="screen"/>
+
+		<!-- generate and load workbench urdf -->
+		<node name="generate_workbench" pkg="xacro" type="xacro.py" args="-o $(find vito_description)/robot/workbench.urdf $(find lwr_force_position_controllers)/robot/workbench.urdf.xacro" />
+		<node name="spawn_workbench" pkg="gazebo_ros" type="spawn_model" args="-file $(find vito_description)/robot/workbench.urdf -urdf -model workbench" respawn="false" output="screen"/>		 		
+
+		<!-- enable/disable gui at will, the rviz listens to the simulation -->
+		<include file="$(find gazebo_ros)/launch/empty_world.launch">
+			<arg name="world_name" value="$(find single_lwr_robot)/worlds/simple_environment.world"/>
+			<arg name="paused" value="false"/>
+			<arg name="use_sim_time" value="true"/>
+			<arg name="gui" value="true"/>
+			<arg name="headless" value="false"/>
+			<arg name="debug" value="false"/>
+
+		</include>
+	</group>
+
+	<!-- load moveit configuration -->
+	<group if="$(arg load_moveit)">
+		<include file="$(find single_lwr_moveit)/launch/move_group.launch">
+			<arg name="allow_trajectory_execution" value="true"/>  
+			<arg name="fake_execution" value="false"/>
+			<arg name="info" value="true"/>
+			<arg name="debug" value="false"/>
+		</include>
+
+		<!-- run Rviz and load the default config to see the state of the move_group node -->
+		<include file="$(find single_lwr_moveit)/launch/moveit_rviz.launch">
+			<arg name="config" value="true"/>
+			<arg name="debug" value="false"/>
+		</include>
+	</group>
+	
+	<!-- Load updated joint limits (override information from single_lwr_moveit) to respect T1 mode limits -->
+	<group if="$(arg t1_limits)" ns="robot_description_planning">
+		<rosparam command="load" file="$(find single_lwr_robot)/config/t1_joint_limits.yaml"/>
+	</group>
+
+	<!-- load robotHW configurations to rosparam server -->
+	<rosparam command="load" file="$(find lwr_force_position_controllers)/config/hw_interface.yaml"/>
+
+	<!-- load all controller configurations to rosparam server -->
+	<rosparam file="$(find lwr_force_position_controllers)/config/controllers.yaml" command="load"/>
+
+	<!-- real robot and controllers -->
+	<group ns="lwr">
+		<group if="$(arg lwr_powered)">
+			<!--add a copy of the robot description within the name space -->
+			<param name="robot_description" command="$(find xacro)/xacro.py $(find single_lwr_robot)/robot/$(arg robot_name).urdf.xacro"/>
+
+			<include file="$(find lwr_hw)/launch/lwr_hw.launch">
+				<arg name="port" value="$(arg port)"/>
+				<arg name="ip" value="$(arg ip)"/>
+				<arg name="file_with_path" value="$(arg file)"/>
+				<!-- this name MUST match the name you give to the arm in the URDF instance -->
+				<!-- to minimize errors, you could pass it as a xacro parameter -->
+				<arg name="name" value="lwr"/>
+			</include>
+		</group>
+
+		<!-- spawn only desired controllers in current namespace -->
+		<node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen"  args="joint_state_controller arm_state_controller ft_sensor_controller $(arg controllers)"/>
+
+		<node name="controller_stopper" pkg="controller_manager" type="spawner" args="--stopped $(arg stopped_controllers)" />
+
+	</group>
+
+	<node name="controller_switcher" pkg="controller_switcher" type="controller_switcher" args="lwr"/>
+</launch>

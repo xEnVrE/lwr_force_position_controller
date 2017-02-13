@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" 
+       name="workbench">
+
+  <xacro:include filename="$(find lwr_force_position_controllers)/model/table.urdf.xacro"/>
+
+  <link name="workbench_anchor">
+      <origin xyz="0 0 1" rpy="0 0 0"/>
+  </link>
+
+  <xacro:model_table name="workbench"
+                    parent="workbench_anchor"
+                    length="0.725"
+                    width="1.25"
+                    height="1.05"
+                    plate_thickness="0.05"
+  		    foam="1"
+  		    foam_thickness="0.1"
+  		    foam_kp="200"
+  		    foam_kd="1">
+  <origin xyz="-1.25 0.625 0.05" rpy="0 0 0"/>
+  </xacro:model_table>
+
+</robot>

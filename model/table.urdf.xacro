@@ -1,0 +1,139 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  
+<xacro:property name="leg_width" value="0.08" />
+<xacro:property name="border_offset" value="0.055" />
+
+<!-- utils /-->
+<xacro:include filename="$(find lwr_description)/model/utils.xacro"/>
+
+<!-- conversions -->
+<!-- I couldn't make the simulation work with realistic values, so I tweaked the conversion values -->
+<xacro:property name="mm_to_m" value="0.001"/>
+<xacro:property name="mm2_to_m2" value="0.000001"/>
+<xacro:property name="gr_to_Kg" value="0.001"/>
+
+<!-- not so negligible, otherwise simulation fails -->
+<xacro:property name="table_mass" value="${40000*gr_to_Kg}"/>
+<xacro:property name="table_inertia">
+    <origin xyz="0 0 0"/>
+    <mass value="${table_mass}"/>
+    <inertia ixx="${table_mass * 10 * mm2_to_m2}" ixy="0.0" ixz="0.0" iyy="${table_mass * 10 * mm2_to_m2}" iyz="0.0" izz="${table_mass * 10 * mm2_to_m2}"/>
+</xacro:property>
+<!-- <xacro:property name="foam_mass" value="${19.222 * foam_thickness * length * width}"/> -->
+<xacro:property name="foam_mass" value="1.7419375"/>
+
+<xacro:macro name="table_leg" params="parent name *origin">
+    <joint name="${name}_joint" type="fixed">
+        <xacro:insert_block name="origin"/>
+        <parent link="${parent}" />
+        <child link="${name}_link" />
+    </joint>
+    <link name="${name}_link">
+        <inertial>
+            <xacro:insert_block name="table_inertia"/>
+        </inertial>
+    <visual>
+      <geometry>
+        <box size="${leg_width/2} -${leg_width} ${height - foam_thickness - plate_thickness}"/>
+      </geometry>
+      <material name="Vito/Black"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="${leg_width/2} -${leg_width} ${height - foam_thickness - plate_thickness}"/>
+      </geometry>
+    </collision>
+    </link>
+
+    <gazebo reference="${name}_link">
+        <!-- <static>true</static> -->
+    </gazebo>
+</xacro:macro>
+
+<xacro:macro name="foam" params="parent *origin">
+  <joint name="${parent}_foam_joint" type="fixed">
+    <xacro:insert_block name="origin"/>
+    <parent link="${parent}"/>
+    <child link="${name}_foam_link"/>
+  </joint>
+  <link name="${name}_foam_link">
+    <inertial>
+      <mass value="${foam_mass}"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <cuboid_inertia_def length="${length}" width="${width}" height="${foam_thickness}" mass="${foam_mass}"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <box size="${length} ${width} ${foam_thickness}"/>
+      </geometry>
+      <material name="Vito/LightGrey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry>
+  <box size="${length} ${width} ${foam_thickness}"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <gazebo reference="${name}_foam_link">
+    <material>Gazebo/Yellow</material>
+    <kp>${foam_kp}</kp>
+    <kd>${foam_kd}</kd>
+    <mu1>0</mu1>
+    <mu2>0</mu2>
+  </gazebo>
+</xacro:macro>
+
+<xacro:macro name="model_table" params="parent name *origin length width height plate_thickness foam:='no' foam_thickness:=0 foam_kp:=0 foam_kd:=0">
+    <joint name="${parent}_${name}_base_joint" type="fixed">
+        <xacro:insert_block name="origin"/>
+        <parent link="${parent}"/>
+        <child link="${name}_plate_link"/>
+    </joint>
+    <link name="${name}_plate_link">
+        <inertial>
+            <xacro:insert_block name="table_inertia"/>
+        </inertial>
+        <visual>
+            <origin xyz="${1/2 * length} ${-1/2 * width} ${-1/2 * plate_thickness - foam_thickness}"/>
+            <geometry>
+                <box size="${length} ${width} ${plate_thickness}"/>
+      </geometry>
+      <material name="Vito/LightGrey"/>
+    </visual>
+        <collision>
+            <origin xyz="${1/2 * length} ${-1/2 * width} ${-1/2 * plate_thickness -  foam_thickness}"/>
+            <geometry>
+                <box size="${length} ${width} ${plate_thickness}"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <xacro:table_leg parent="${name}_plate_link" name="${name}_leg_0">
+        <origin xyz="${border_offset} -${border_offset} -${1/2 * (foam_thickness + plate_thickness + height)}"/>
+    </xacro:table_leg>
+    <xacro:table_leg parent="${name}_plate_link" name="${name}_leg_1">
+        <origin xyz="${length - border_offset} -${border_offset} -${1/2 * (foam_thickness + plate_thickness + height)}"/>
+    </xacro:table_leg>
+    <xacro:table_leg parent="${name}_plate_link" name="${name}_leg_2">
+        <origin xyz="${border_offset} -${width - border_offset} -${1/2 * (foam_thickness + plate_thickness + height)}"/>
+    </xacro:table_leg>
+    <xacro:table_leg parent="${name}_plate_link" name="${name}_leg_3">
+        <origin xyz="${length - border_offset} -${width - border_offset} -${1/2 * (foam_thickness + plate_thickness + height)}"/>
+    </xacro:table_leg>
+    
+    <xacro:if value="${foam == 1}">
+         <xacro:foam parent="${name}_plate_link">
+             <origin xyz="${1/2 * length} ${-1/2 * width} ${-1/2 * foam_thickness}"/>
+         </xacro:foam>
+    </xacro:if>
+
+    <gazebo reference="${name}_plate_link">
+        <!-- <static>true</static> -->
+    </gazebo>
+    
+</xacro:macro>
+</robot>

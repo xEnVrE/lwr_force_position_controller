@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" 
+       name="vito">
+       
+  <!-- MODELS -->
+  <xacro:include filename="$(find vito_description)/model/torso.urdf.xacro"/>
+  <xacro:include filename="$(find lwr_force_position_controllers)/model/table.urdf.xacro"/>
+  <xacro:include filename="$(find vito_description)/model/materials.urdf"/>
+  <xacro:include filename="$(find lwr_description)/model/kuka_lwr.urdf.xacro"/>
+  <xacro:include filename="$(find lwr_force_position_controllers)/model/end_effector.urdf.xacro"/>
+
+    
+  <link name="vito_anchor" />
+  
+  <!-- BODY -->
+  <xacro:model_table name="table" 
+                    parent="vito_anchor"
+                    length="0.725"
+                    width="1.05"
+                    height="1"
+                    plate_thickness="0.05"
+		    foam="no">
+    <origin xyz="-0.495 0.55 0" rpy="0 0 0"/>
+  </xacro:model_table>
+
+
+  <!-- TORSO -->
+  <xacro:model_torso name="torso" parent="vito_anchor">
+    <origin xyz="0 0 0"/>
+  </xacro:model_torso>
+  
+  <xacro:kuka_lwr name="lwr" parent="vito_anchor">
+    <origin xyz="-0.165 0.10858 0.390" rpy="-1.5707963267948966 0.5235987010713441 0.5235990737060282"/>
+  </xacro:kuka_lwr>
+
+  <xacro:end_effector_kuka_lwr parent="lwr_7_link" name="lwr">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:end_effector_kuka_lwr>
+
+
+</robot>

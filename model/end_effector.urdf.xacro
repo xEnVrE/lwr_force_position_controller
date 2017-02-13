@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="end_effector">
+
+  <!-- Constants for robot dimensions -->
+  <xacro:property name="PI" value="3.1415926535897931"/>
+  <xacro:property name="mass" value="0.001" /> <!-- arbitrary value for mass -->
+  <xacro:property name="width" value="0.25" />
+  <xacro:property name="height" value="0.5" />
+  <xacro:property name="length" value="0.025" /> 
+  <xacro:property name="radius" value="0.05" /> 
+  <!-- Import all Gazebo-customization elements, including Gazebo colors -->
+  <xacro:include filename="$(find lwr_force_position_controllers)/model/end_effector.gazebo" />
+
+  <xacro:macro name="end_effector_kuka_lwr" params="parent name *origin">
+
+    <joint name="sensor_joint" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <parent link="${name}_7_link"/>
+      <child link="end_effector"/>
+    </joint>
+
+    <link name="end_effector">
+      <inertial>
+        <mass value="0.00001"/>
+        <origin xyz="0 0 0.005"/>
+        <cylinder_inertia_def radius="0.03" length="0.01" mass="0.00001"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0.01" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.03" length="0.02"/>
+        </geometry>
+      <material name="Red"/>
+      </visual>
+      <visual>
+        <origin xyz="0 0 0.02" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.01" />
+        </geometry>
+      <material name="Red"/>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0.02" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.01" />
+        </geometry>
+      </collision>
+
+    </link>
+  </xacro:macro>
+
+  <xacro:kuka_lwr_gazebo_ft_sensor name="lwr"/>
+  
+</robot>
