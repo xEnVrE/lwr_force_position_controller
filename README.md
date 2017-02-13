@@ -7,7 +7,7 @@ move the end effector in a desired position using inverse kinematics;
 - [__cartesian_inverse_dynamics_controller__](src/cartesian_inverse_dynamics_controller.cpp): an operational space controller
 performing dynamics inversion (also wrenches at the end effector are compensated);
 - [__hybrid_impedance_controller__](src/hybrid_impedance_controller.cpp): an operational space controller implementing the
-hybrid impedance controller proposed by [Spong](http://ieeexplore.ieee.org/document/1087919/) (it uses the
+hybrid impedance controller proposed by [Spong](http://ieeexplore.ieee.org/document/20440/) (it uses the
 cartesian_inverse_dynamics_controller to perform dynamics inversion);
 - [__ft_sensor_controller__](src/ft_sensor_controller.cpp): a JointStateInterface controller performing transformations
 on the force/torque measurements provided by the sensor.
