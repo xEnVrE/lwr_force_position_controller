@@ -50,7 +50,6 @@ namespace lwr_controllers {
     // resize wrenches
     wrench_wrist_ = KDL::Wrench();
     base_wrench_wrist_ = KDL::Wrench();
-    ee_calibration_wrench_ = KDL::Wrench();
 
     // instantiate state and its derivatives (used in inheriting class)
     ws_x_ = Eigen::VectorXd(6);
@@ -62,7 +61,8 @@ namespace lwr_controllers {
     ws_TA_dot_ = Eigen::MatrixXd::Zero(6,6);
 
     // subscribe to force/torque sensor topic
-    sub_force_ = n.subscribe("/lwr/ft_sensor", 1, &CartesianInverseDynamicsController::force_torque_callback, this);
+    sub_force_ = n.subscribe("/lwr/ft_sensor_controller/ft_sensor_nog"\
+			     , 1, &CartesianInverseDynamicsController::force_torque_callback, this);
 
     return true;
   }
@@ -197,18 +197,11 @@ namespace lwr_controllers {
     // base_wrench_wrist = [R_base_wrist_, zeros(3);
     //                      zeros(3), R_base_wrist_] * wrench_wrist
     //
-    //
     ////////////////////////////////////////////////////////////////////////
     //
     
     // project wrench onto world frame
     base_wrench_wrist_ = ee_fk_frame_.M * wrench_wrist_;
-
-    // move the reference point of the weight from the CoM of the tool to the wrist
-    KDL::Frame gravity_transformation(KDL::Rotation::Identity(),\
-				      ee_fk_frame_.M * p_wrist_ee_com_);
-    // compensate for the weight of the tool
-    base_wrench_wrist_ = base_wrench_wrist_ - gravity_transformation * base_weight_com_;
     tf::wrenchKDLToEigen(base_wrench_wrist_, base_F_wrist_);
     
     //
@@ -252,8 +245,8 @@ namespace lwr_controllers {
     KDL::Wrench wrench_wrist_topic;
     tf::wrenchMsgToKDL(msg->wrench, wrench_wrist_topic);
 
-    // compensate for initial ft sensor calibration
-    wrench_wrist_topic += ee_calibration_wrench_;
+    // // compensate for initial ft sensor calibration
+    // wrench_wrist_topic += ee_calibration_wrench_;
    
     // reverse the measured force so that wrench_wrist represents 
     // the force applied on the environment by the end-effector
@@ -270,30 +263,10 @@ namespace lwr_controllers {
     p_base_ws_ = KDL::Vector(x, y, z);
   }
 
-  void CartesianInverseDynamicsController::set_p_wrist_ee_com(double x, double y, double z)
-  {
-    p_wrist_ee_com_ = KDL::Vector(x, y, z);
-  }
-  
   void CartesianInverseDynamicsController::set_ws_base_angles(double alpha, double beta, double gamma)
   {
     R_ws_base_ = KDL::Rotation::EulerZYX(alpha, beta, gamma);
   }
-
-  void CartesianInverseDynamicsController::set_initial_ft_sensor_wrench(KDL::Wrench wrench)
-  {
-    ee_calibration_wrench_ = wrench;
-  }
-
-  void CartesianInverseDynamicsController::set_tool_weight(double mass)
-  {
-    // evaluate weight force due to the tool mass (projected in world frame)
-    // WARNING: the minus sign accounts for the wrench being the force exerted
-    // by the end effector on the environment and not viceversa
-    base_weight_com_ = -KDL::Wrench(mass * gravity_, KDL::Vector::Zero());
-  }
-
-
     
 } // namespace
 

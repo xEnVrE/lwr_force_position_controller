@@ -24,10 +24,8 @@ namespace lwr_controllers {
     // get parameters required by 
     // CartesianInverseDynamicsController::init(robot, n) from rosparam server 
     get_parameters(n);
-    // calibrate ft sensor measurement
-    calibrate_ft_sensor(n);
 
-    // this should be called after get_parameters and calibrate_ft_sensor ONLY
+    // this should be called after get_parameters ONLY
     CartesianInverseDynamicsController::init(robot, n);
     
     // instantiate the desired trajectory
@@ -66,7 +64,6 @@ namespace lwr_controllers {
     pub_x_des_ = n.advertise<geometry_msgs::WrenchStamped>("x_des", 1000);
     pub_xdot_des_ = n.advertise<geometry_msgs::WrenchStamped>("xdot_des", 1000);
     pub_xdotdot_des_ = n.advertise<geometry_msgs::WrenchStamped>("xdotdot_des", 1000);
-
 
     return true;
   }
@@ -130,18 +127,6 @@ namespace lwr_controllers {
 					       KDL::Vector(0, 0, 0)));
   }
 
-  void HybridImpedanceController::calibrate_ft_sensor(ros::NodeHandle &n)
-  {
-    // get initial force torque sensor measurement from rosparam server
-    // wrench is expressed in ee base
-    std::vector<double> wrench;
-    n.getParam("initial_ft_sensor_wrench", wrench);
-
-    // set ee_calibration_wrench_ in the super class
-    set_initial_ft_sensor_wrench(KDL::Wrench(KDL::Vector(wrench.at(0), wrench.at(1), wrench.at(2)), \
-					     KDL::Vector(wrench.at(3), wrench.at(4), wrench.at(5))));
-  }
-
   void HybridImpedanceController::get_parameters(ros::NodeHandle &n)
   {
     // vector from the wrist to the tool tip (projected in lwr_link_7 frame)
@@ -153,24 +138,15 @@ namespace lwr_controllers {
     // attitude of the workspace frame w.r.t. vito_anchor frame
     std::vector<double> ws_base_angles;
 
-    // vector from the wrist to the CoM of the tool (projected in lwr_link_7 frame)
-    std::vector<double> p_wrist_ee_com;
-
-    double tool_mass;
-
     // get parameters form rosparameter server
     n.getParam("p_wrist_ee", p_wrist_ee);
     n.getParam("p_base_ws", p_base_ws);
     n.getParam("ws_base_angles", ws_base_angles);
-    n.getParam("p_wrist_ee_com", p_wrist_ee_com);
-    n.getParam("tool_mass", tool_mass);
 
     // set internal members
     set_p_wrist_ee(p_wrist_ee.at(0), p_wrist_ee.at(1), p_wrist_ee.at(2));
     set_p_base_ws(p_base_ws.at(0), p_base_ws.at(1), p_base_ws.at(2));
     set_ws_base_angles(ws_base_angles.at(0), ws_base_angles.at(1), ws_base_angles.at(2));
-    set_tool_weight(tool_mass);
-    set_p_wrist_ee_com(p_wrist_ee_com.at(0), p_wrist_ee_com.at(1), p_wrist_ee_com.at(2));
   }
 
   bool HybridImpedanceController::set_cmd(lwr_force_position_controllers::SetHybridImpedanceCommand::Request &req,\

@@ -27,16 +27,12 @@ namespace lwr_controllers
 		 lwr_force_position_controllers::SetHybridImpedanceCommand::Response &res);
     void get_parameters(ros::NodeHandle &n);
     void set_circular_traj(const ros::Duration& period);
-    void calibrate_ft_sensor(ros::NodeHandle &n);
-
     void publish_data(ros::Publisher& pub, KDL::Wrench wrench);
     void publish_data(ros::Publisher& pub, Eigen::VectorXd& vector);
+
     // SetHybridImpiedanceCommand service
     ros::ServiceServer cmd_service_;
     
-    // distance from the wrist to the CoM of the end-effector
-    KDL::Vector p_wrist_ee_com_;
-
     // hybrid impedance controller (pose)
     Eigen::VectorXd x_des_, xdot_des_, xdotdot_des_;
     Eigen::MatrixXd Kp_, Kd_;    

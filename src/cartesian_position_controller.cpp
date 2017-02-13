@@ -70,8 +70,9 @@ namespace lwr_controllers {
     if(use_simulation_)
       {
 	// subscribe to force/torque sensor topic
-	// (simulation only since it is required to compensate for the mass tool)
-	sub_force_ = n.subscribe("/lwr/ft_sensor", 1,\
+	// (simulation only since it is required to compensate for the mass tool,
+	// the real kuka compensate for mass tool internally)
+	sub_force_ = n.subscribe("/lwr/ft_sensor_controller/ft_sensor_alt", 1,\
 				 &CartesianPositionController::ft_sensor_callback, this);
       }
 	
@@ -111,12 +112,11 @@ namespace lwr_controllers {
 	// evaluate the wrench applied to the wrist from the force/torque sensor
 	// and project it in the world frame (base)
 	// this is required to compensate for additional masses attached past the wrist
-	// (simulation only)
+	// (simulation only, the real kuka compensate for mass tool internally)
 	////////////////////////////////////////////////////////////////////////////////
 	//
 
 	// evaluate the current geometric jacobian J(q)
-
 	J_.resize(kdl_chain_.getNrOfJoints());
 	jacobian_solver_->JntToJac(joint_msr_states_.q, J_);
 
@@ -135,7 +135,7 @@ namespace lwr_controllers {
     // evaluate B * tau_cmd
     KDL::JntArray B_tau_cmd;
     B_tau_cmd.resize(kdl_chain_.getNrOfJoints());
-   if (use_simulation_)
+    if (use_simulation_)
       // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
       B_tau_cmd.data = B.data * tau_cmd.data + C.data + J_.data.transpose() * base_F_wrist_;
     else

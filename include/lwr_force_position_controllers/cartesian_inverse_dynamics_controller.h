@@ -27,11 +27,9 @@ namespace lwr_controllers
     void update(const ros::Time& time, const ros::Duration& period);
     void set_p_wrist_ee(double x, double y, double z);
     void set_p_base_ws(double x, double y, double z);
-    void set_p_wrist_ee_com(double x, double y, double z);
     void set_ws_base_angles(double alpha, double beta, double gamma);
     void set_initial_ft_sensor_wrench(KDL::Wrench wrench);
     void set_command(Eigen::VectorXd& commanded_acceleration);
-    void set_tool_weight(double);
 
   private:
     void force_torque_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
@@ -49,13 +47,11 @@ namespace lwr_controllers
     KDL::Jacobian base_J_wrist_;
     KDL::Rotation R_ws_base_;
     KDL::Rotation R_ws_ee_;
-    KDL::Wrench wrench_wrist_, base_wrench_wrist_, base_weight_com_;
+    KDL::Wrench wrench_wrist_, base_wrench_wrist_;
     KDL::Vector p_wrist_ee_;
     KDL::Vector p_base_ws_;
-    KDL::Vector p_wrist_ee_com_;
     KDL::Frame ee_fk_frame_;
     KDL::Chain extended_chain_;
-    KDL::Wrench ee_calibration_wrench_;
 
     boost::scoped_ptr<KDL::ChainDynParam> dyn_param_solver_;
     boost::scoped_ptr<KDL::ChainJntToJacSolver> ee_jacobian_solver_, wrist_jacobian_solver_;

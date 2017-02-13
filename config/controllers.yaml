@@ -37,7 +37,7 @@ lwr:
     ft_sensor_offset: [0, 0, 0, 0, 0, 0]
     base_tool_weight_com: [0, 0, 0, 0, 0, 0]
     p_wrist_toolcom: [0, 0, 0.1]
-    publish_rate: 1000 #Hz
+    publish_rate: 200 #Hz
 
   # Cartesian Position Controller
   cartesian_position_controller:
@@ -54,7 +54,7 @@ lwr:
     tip_name: lwr_7_link
     p_wrist_ee: [0, 0, 0.03]
     p_base_ws: [-0.7, 0, 0.05]                                                                                                                
-    ws_base_angles: [0, 0, 0]                                                                                                                 
+    ws_base_angles: [0, 0, 0]
 
   arm_state_controller: 
     type: arm_state_controller/ArmStateController
