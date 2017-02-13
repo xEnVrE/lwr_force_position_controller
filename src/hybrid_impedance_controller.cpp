@@ -25,13 +25,8 @@ namespace lwr_controllers {
     // CartesianInverseDynamicsController::init(robot, n) from rosparam server 
     get_parameters(n);
 
-    // this should be called after get_parameters ONLY
+    // this should be called *ONLY* after get_parameters 
     CartesianInverseDynamicsController::init(robot, n);
-    
-    // instantiate the desired trajectory
-    x_des_ = Eigen::VectorXd(6);
-    xdot_des_ = Eigen::VectorXd(6);
-    xdotdot_des_ = Eigen::VectorXd(6);
       
     // advertise SetHybridImpedanceCommand service
     cmd_service_ = n.advertiseService("set_hybrid_impedance_command", &HybridImpedanceController::set_cmd, this);
@@ -42,14 +37,26 @@ namespace lwr_controllers {
     km_f_ = DEFAULT_KM_F;
     kd_f_ = DEFAULT_KD_F;
 
+    // instantiate the desired trajectory
+    x_des_ = Eigen::VectorXd(6);
+    xdot_des_ = Eigen::VectorXd(6);
+    xdotdot_des_ = Eigen::VectorXd(6);
+
+    /////////////////////////////////////////////////
     // evaluate default trajectory
+    /////////////////////////////////////////////////
+    //
+
     double yaw_des, pitch_des, roll_des;
     KDL::Rotation R_des = KDL::Rotation::RotY(M_PI);
     R_des.GetEulerZYX(yaw_des, pitch_des, roll_des);
+
+    // constant position
     x_des_ << 0, 0, 0.1, yaw_des, pitch_des, roll_des;
     xdot_des_ << 0, 0, 0, 0, 0, 0;
     xdotdot_des_ << 0, 0, 0, 0, 0, 0;
-    fz_des_ = 0;
+    
+    // or circular trajectory (disabled by default)
     circle_trj_ = false;
     circle_trj_frequency_ = DEFAULT_CIRCLE_FREQ;
     circle_trj_radius_ = DEFAULT_CIRCLE_RADIUS;
@@ -57,8 +64,15 @@ namespace lwr_controllers {
     circle_trj_center_y_ = DEFAULT_CIRCLE_CENTER_Y;
     time_ = 0;
 
-    pub_force_ = n.advertise<geometry_msgs::WrenchStamped>("ft_sensor_nog", 1000);
-    pub_force_des_ = n.advertise<geometry_msgs::WrenchStamped>("force_des", 1000);
+    // force set point
+    fz_des_ = 0;
+
+    //
+    ////////////////////////////////////////////////
+
+    // advertise several topics
+    pub_force_ = n.advertise<geometry_msgs::WrenchStamped>("force_measure", 1000);
+    pub_force_des_ = n.advertise<geometry_msgs::WrenchStamped>("force_setpoint", 1000);
     pub_state_ = n.advertise<geometry_msgs::WrenchStamped>("state", 1000);
     pub_dstate_ = n.advertise<geometry_msgs::WrenchStamped>("dstate", 1000);
     pub_x_des_ = n.advertise<geometry_msgs::WrenchStamped>("x_des", 1000);
@@ -78,16 +92,22 @@ namespace lwr_controllers {
     // evaluate inverse dynamics
     CartesianInverseDynamicsController::update(time, period);
 
-    // the base class evaluates the following quantities every update
+    // the super class evaluates the following quantities every update
+    //
     // ws_x_: distance and attitude between the workspace and the tool tip (workspace basis)
     // ws_xdot_: derivative of ws_x_ (workspace basis)
-    // base_wrench_wrist_: forces and torques with the reference point on the wrist (world_base basis)
-
+    // base_wrench_wrist_: forces and torques with the reference point on the wrist (world frame basis)
+    // R_ws_base_: rotation matrix from workspace to vito_anchor
+    // R_ws_ee: attitude of the end effector w.r.t to the workspace frame
+    //
+    
+    // transform the ft_sensor wrench 
     // move the reference point from the wrist to the tool tip and project in workspace basis
     KDL::Frame force_transformation(R_ws_base_, R_ws_ee_ * (-p_wrist_ee_));
     KDL::Wrench ws_F_ee;
     ws_F_ee = force_transformation * base_wrench_wrist_;
 
+    // check if the circular trajectory is requested by the user
     if (circle_trj_)
       set_circular_traj(period);
 
@@ -99,7 +119,15 @@ namespace lwr_controllers {
     err_x(4) = angles::normalize_angle(err_x(4));
     err_x(5) = angles::normalize_angle(err_x(5));
 
+    /////////////////////////////////////////////////////////////////////
+    //
+    // desired acceleration
+    //
+    /////////////////////////////////////////////////////////////////////
+    //
+
     Eigen::VectorXd acc_cmd = Eigen::VectorXd(6);
+
     // position controlled DoF
     // ws_x ws_y R_ee_ws_(yaw, pitch, roll) 
     acc_cmd = Kp_ * err_x + Kd_ * (xdot_des_ - ws_xdot_) + xdotdot_des_;
@@ -113,15 +141,18 @@ namespace lwr_controllers {
     // ws_Fz
     acc_cmd(2) = km_f_ * (-kd_f_ / km_f_ * ws_xdot_(2) + (fz_des_ - ws_F_ee.force.z()));
 
+    //
+    /////////////////////////////////////////////////////////////////////
+
+    // call super class method set_command
     set_command(acc_cmd);
 
+    // publish data
     publish_data(pub_state_, ws_x_);
     publish_data(pub_dstate_, ws_xdot_);
     publish_data(pub_x_des_, x_des_);
     publish_data(pub_xdot_des_, xdot_des_);
     publish_data(pub_xdotdot_des_, xdotdot_des_);
-
-    // publish wrench
     publish_data(pub_force_, ws_F_ee);
     publish_data(pub_force_des_, KDL::Wrench(KDL::Vector(0, 0, fz_des_),\
 					       KDL::Vector(0, 0, 0)));
@@ -155,6 +186,7 @@ namespace lwr_controllers {
     // set the desired position requested by the user
     x_des_(0) = req.command.x;
     x_des_(1) = req.command.y;
+
     // reset the derivatives 
     xdot_des_(0) = 0;
     xdot_des_(1) = 0;
@@ -187,7 +219,7 @@ namespace lwr_controllers {
 
   void HybridImpedanceController::set_circular_traj(const ros::Duration& period)
   {
-    // evaluate circle trajectory
+    // evaluate the circular trajectory
     time_ = time_ + period.toSec();
     double f = circle_trj_frequency_;
     double omega = 2 * M_PI * f;
@@ -199,15 +231,15 @@ namespace lwr_controllers {
     double ddx_trj = -omega * omega * rho * cos(omega * time_);
     double ddy_trj = -omega * omega * rho * sin(omega * time_);
 
-    // set the desired position requested by the trajectory
+    // set the position
     x_des_(0) = x_trj;
     x_des_(1) = y_trj;
 
-    // set the desired velocity requested by the trajectory
+    // set the velocity
     xdot_des_(0) = dx_trj;
     xdot_des_(1) = dy_trj;
 
-    // set the desired acceleration requested by the trajectory
+    // set the acceleration
     xdotdot_des_(0) = ddx_trj;
     xdotdot_des_(1) = ddy_trj;
   }
