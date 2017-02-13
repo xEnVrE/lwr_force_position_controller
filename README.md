@@ -23,7 +23,7 @@ In order to compile the GUI you also need ros-*-qt-build.
 
 ## How to run a simulation
 
-WARNING: in order to run the simulation you MUST set every \<damping\> and \<friction\> tag in [kuka_lwer.urdf.xacro](https://github.com/CentroEPiaggio/kuka-lwr/blob/master/lwr_description/model/kuka_lwr.urdf.xacro)
+WARNING: in order to run the simulation you MUST set every \<damping\> and \<friction\> tag in [kuka_lwr.urdf.xacro](https://github.com/CentroEPiaggio/kuka-lwr/blob/master/lwr_description/model/kuka_lwr.urdf.xacro)
 to 0.0 and disable the \<collision\> section of the 7-th link.
 
 1. roslaunch lwr_force_position_controllers single_lwr.launch
