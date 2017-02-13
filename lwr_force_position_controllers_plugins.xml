@@ -24,8 +24,5 @@
       Implement a hybrid impedance controller using the abstract controller CartesianInverseDynamicsController
     </description>
   </class>
-  
-
-
 
 </library>

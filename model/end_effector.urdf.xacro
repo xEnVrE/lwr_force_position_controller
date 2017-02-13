@@ -14,9 +14,9 @@
   <xacro:macro name="end_effector_kuka_lwr" params="parent name *origin">
 
     <joint name="sensor_joint" type="fixed">
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <parent link="${name}_7_link"/>
+      <xacro:insert_block name="origin"/>
       <child link="end_effector"/>
+      <parent link="${name}_7_link"/>
     </joint>
 
     <link name="end_effector">
