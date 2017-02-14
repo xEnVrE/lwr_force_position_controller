@@ -337,8 +337,6 @@ namespace lwr_controllers {
     tau_fri_ += ns_filter * base_J_im_linear.transpose() * \
       (Kp_im * (im_link_des_state - im_link_state) - Kd_im * im_link_state_dot);
 
-    std::cout << im_link_des_state - im_link_state << std::endl << std::endl;
-
     //
     //////////////////////////////////////////////////////////////////////////////////
 
