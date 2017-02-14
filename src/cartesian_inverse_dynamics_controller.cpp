@@ -37,6 +37,13 @@ namespace lwr_controllers {
     extended_chain_ = kdl_chain_;
     extended_chain_.addSegment(fake_segment);
 
+    // create a new chain from vito_anchor to the link
+    // specified by the parameter internal_motion_controlled_link
+    std::string root_name, im_c_link_name;
+    nh_.getParam("root_name", root_name);
+    nh_.getParam("internal_motion_controlled_link", im_c_link_name);
+    kdl_tree_.getChain(root_name, im_c_link_name, im_chain_);
+
     // instantiate solvers
     // gravity_ is a member of KinematicChainControllerBase
     dyn_param_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
@@ -44,6 +51,8 @@ namespace lwr_controllers {
     wrist_jacobian_solver_.reset(new KDL::ChainJntToJacSolver(kdl_chain_));
     ee_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(extended_chain_));
     ee_jacobian_dot_solver_.reset(new KDL::ChainJntToJacDotSolver(extended_chain_));
+    im_jacobian_solver_.reset(new KDL::ChainJntToJacSolver(im_chain_));
+    im_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(im_chain_));
     
     // instantiate wrenches
     wrench_wrist_ = KDL::Wrench();
@@ -69,13 +78,29 @@ namespace lwr_controllers {
 
   void CartesianInverseDynamicsController::update(const ros::Time& time, const ros::Duration& period)
   {
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+    // Robot configuration
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+
     // get current robot configuration (q and q dot)
-    for(size_t i=0; i<joint_handles_.size(); i++)
+    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
       {
 	joint_msr_states_.q(i) = joint_handles_[i].getPosition();
 	joint_msr_states_.qdot(i) = joint_handles_[i].getVelocity();
       }
+    
+    // get the current configuration of the internal motion controlled link
+    KDL::JntArray q_im;
+    q_im.resize(im_chain_.getNrOfJoints());
+    for(size_t i=0; i<im_chain_.getNrOfJoints(); i++)
+	q_im(i) = joint_msr_states_.q(i);
 
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+    
     //////////////////////////////////////////////////////////////////////////////////
     //
     // Joint Space Inertia Matrix B and Coriolis term C * q dot
@@ -114,6 +139,15 @@ namespace lwr_controllers {
     base_J_wrist.resize(kdl_chain_.getNrOfJoints());
     wrist_jacobian_solver_->JntToJac(joint_msr_states_.q, base_J_wrist);
 
+    // evaluate the current geometric jacobian related to 
+    // the internal motion controlled link (linear velocity only)
+    KDL::Jacobian base_J_im;
+    Eigen::MatrixXd base_J_im_linear = Eigen::MatrixXd::Zero(3,7);
+    base_J_im.resize(im_chain_.getNrOfJoints());
+    im_jacobian_solver_->JntToJac(q_im, base_J_im);
+    base_J_im_linear.block(0, 0, 3, im_chain_.getNrOfJoints()) = \
+      base_J_im.data.block(0, 0, 3, im_chain_.getNrOfJoints());
+
     //
     //////////////////////////////////////////////////////////////////////////////////
 
@@ -124,8 +158,13 @@ namespace lwr_controllers {
     //////////////////////////////////////////////////////////////////////////////////
     //
 
+    // end effector
     KDL::Frame ee_fk_frame;
     ee_fk_solver_->JntToCart(joint_msr_states_.q, ee_fk_frame);
+
+    // internal motion controlled link
+    KDL::Frame im_fk_frame;
+    im_fk_solver_->JntToCart(q_im, im_fk_frame);
 
     //
     //////////////////////////////////////////////////////////////////////////////////
@@ -249,6 +288,56 @@ namespace lwr_controllers {
     tau_fri_ = C.data + base_J_wrist.data.transpose() *\
       (base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
     command_filter_ = base_J_wrist.data.transpose() * BA;
+
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+
+    //////////////////////////////////////////////////////////////////////////////////
+    //
+    // internal motion handling 
+    // (see A Unified Approach for Motion and Force Control
+    // of Robot Manipulators: The Operational Space Formulation, Oussama Khatib
+    // for details on the definition of a dynamically consistent generalized inverse)
+    //
+    //////////////////////////////////////////////////////////////////////////////////
+    //  
+
+    // evaluate a dynamically consistent generalized inverse
+    Eigen::MatrixXd gen_inv;
+    gen_inv = B.data.inverse() * base_J_wrist.data.transpose() *\
+      (base_J_wrist.data * B.data.inverse() * base_J_wrist.data.transpose()).inverse();
+
+    // evaluate the null space filter
+    Eigen::MatrixXd ns_filter = Eigen::Matrix<double, 7, 7>::Identity() -\
+      base_J_wrist.data.transpose() * gen_inv.transpose();
+
+    // controller gains
+    Eigen::Matrix<double, 3, 3> Kp_im = Eigen::Matrix<double, 3, 3>::Zero(); 
+    Eigen::Matrix<double, 3, 3> Kd_im = Eigen::Matrix<double, 3, 3>::Identity() * 30;
+    // set proportional action in the z direction only
+    Kp_im(2,2) = 30;
+
+    // state and derivative of the state
+    Eigen::Matrix<double, 3, 1> im_link_state;
+    Eigen::VectorXd im_link_state_dot;
+    tf::vectorKDLToEigen(im_fk_frame.p, im_link_state);
+    im_link_state_dot = base_J_im_linear * joint_msr_states_.qdot.data;
+
+    // control law
+    // is very *RAW* and similar to the Kuka LWR Cartesian Impedance mode of operation
+    // tau = null_space_filter * J_im' * (Kp * (x_des - x) - Kd * x_dot)
+    // 
+    Eigen::VectorXd im_link_des_state = Eigen::VectorXd(3);
+
+    // control strategy is to command an height offset between ee and im link
+    double offset = 0.5;
+    im_link_des_state << 0, 0 , ee_fk_frame.p.z() + offset;
+
+    // filter and add the command to TAU_FRI
+    tau_fri_ += ns_filter * base_J_im_linear.transpose() * \
+      (Kp_im * (im_link_des_state - im_link_state) - Kd_im * im_link_state_dot);
+
+    std::cout << im_link_des_state - im_link_state << std::endl << std::endl;
 
     //
     //////////////////////////////////////////////////////////////////////////////////

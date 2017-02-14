@@ -61,8 +61,12 @@ namespace lwr_controllers
     boost::scoped_ptr<KDL::ChainJntToJacSolver> ee_jacobian_solver_, wrist_jacobian_solver_;
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> ee_fk_solver_;
     boost::scoped_ptr<KDL::ChainJntToJacDotSolver> ee_jacobian_dot_solver_;
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_jacobian_solver_;
+    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_fk_solver_;
     // chain required to move the reference point of jacobians
     KDL::Chain extended_chain_;
+    // chain required to control internal motion
+    KDL::Chain im_chain_;
 
     // these matrices are sparse and initialized in init()
     Eigen::MatrixXd ws_TA_, ws_TA_dot_;
