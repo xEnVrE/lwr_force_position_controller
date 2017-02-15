@@ -56,6 +56,7 @@ lwr:
     p_wrist_ee: [0, 0, 0.03]
     p_base_ws: [-0.7, 0, 0.05]                                                                                                                
     ws_base_angles: [0, 0, 0]
+    publish_rate: 1 #Hz
 
   arm_state_controller: 
     type: arm_state_controller/ArmStateController

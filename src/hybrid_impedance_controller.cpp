@@ -27,6 +27,9 @@ namespace lwr_controllers {
 
     // this should be called *ONLY* after get_parameters 
     CartesianInverseDynamicsController::init(robot, n);
+
+    // get publish rate from rosparam
+    n.getParam("publish_rate", publish_rate_);
       
     // advertise SetHybridImpedanceCommand service
     cmd_service_ = n.advertiseService("set_hybrid_impedance_command", &HybridImpedanceController::set_cmd, this);
@@ -85,6 +88,9 @@ namespace lwr_controllers {
   void HybridImpedanceController::starting(const ros::Time& time)
   {
     CartesianInverseDynamicsController::starting(time);
+
+    // initialize publish time
+    last_publish_time_ = time;
   }
 
   void HybridImpedanceController::update(const ros::Time& time, const ros::Duration& period)
@@ -147,15 +153,22 @@ namespace lwr_controllers {
     // call super class method set_command
     set_command(acc_cmd);
 
-    // publish data
-    publish_data(pub_state_, ws_x_);
-    publish_data(pub_dstate_, ws_xdot_);
-    publish_data(pub_x_des_, x_des_);
-    publish_data(pub_xdot_des_, xdot_des_);
-    publish_data(pub_xdotdot_des_, xdotdot_des_);
-    publish_data(pub_force_, ws_F_ee);
-    publish_data(pub_force_des_, KDL::Wrench(KDL::Vector(0, 0, fz_des_),\
-					       KDL::Vector(0, 0, 0)));
+    if(time > last_publish_time_ + ros::Duration(1.0 / publish_rate_))
+      {
+	//update next tick
+	last_publish_time_ += ros::Duration(1.0 / publish_rate_);
+
+	// publish data
+	publish_data(pub_state_, ws_x_);
+	publish_data(pub_dstate_, ws_xdot_);
+	publish_data(pub_x_des_, x_des_);
+	publish_data(pub_xdot_des_, xdot_des_);
+	publish_data(pub_xdotdot_des_, xdotdot_des_);
+	publish_data(pub_force_, ws_F_ee);
+	publish_data(pub_force_des_, KDL::Wrench(KDL::Vector(0, 0, fz_des_),\
+						 KDL::Vector(0, 0, 0)));
+      }
+
   }
 
   void HybridImpedanceController::get_parameters(ros::NodeHandle &n)

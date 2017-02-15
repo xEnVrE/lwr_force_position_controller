@@ -50,6 +50,8 @@ namespace lwr_controllers
     double time_;
 
     // publisher to monitor data
+    ros::Time last_publish_time_;
+    double publish_rate_;
     ros::Publisher pub_force_, pub_force_des_, pub_state_, pub_dstate_;
     ros::Publisher pub_x_des_, pub_xdot_des_, pub_xdotdot_des_;
   };
