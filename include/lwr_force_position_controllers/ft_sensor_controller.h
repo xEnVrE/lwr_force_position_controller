@@ -4,7 +4,7 @@
 #include <lwr_controllers/KinematicChainControllerBase.h>
 #include <boost/scoped_ptr.hpp>
 #include <geometry_msgs/WrenchStamped.h>
-#include <std_srvs/Empty.h>
+#include <lwr_force_position_controllers/FtSensorInit.h>
 #include <yaml-cpp/yaml.h>
 
 //KDL include
@@ -25,7 +25,10 @@ namespace lwr_controllers
   private:
     void ft_sensor_topic_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void publish_data(KDL::Wrench wrench, ros::Publisher& pub);
-    bool set_sensor_initial_conditions(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res);
+    bool set_sensor_initial_conditions(lwr_force_position_controllers::FtSensorInit::Request& req,\
+				       lwr_force_position_controllers::FtSensorInit::Response& res);
+    bool get_sensor_config(lwr_force_position_controllers::FtSensorInit::Request& req,\
+			   lwr_force_position_controllers::FtSensorInit::Response& res);
     void write_vector_to_yaml(std::string field, KDL::Wrench wrench);
     void write_vector_to_yaml(std::string field, KDL::Vector vector);
     void set_wrench(std::vector<double>& value, KDL::Wrench& wrench);
@@ -41,7 +44,7 @@ namespace lwr_controllers
     
     // set_sensor_initial_conditions service
     ros::ServiceServer sensor_ctl_init_service_;
-
+    ros::ServiceServer get_sensor_config_service_;
   };
 
 } // namespace

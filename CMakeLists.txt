@@ -23,12 +23,14 @@ add_message_files(
    FILES
    CartesianPositionCommandMsg.msg
    HybridImpedanceCommandMsg.msg
+   FtSensorInitMsg.msg
 )
 
 add_service_files(
   FILES
   CartesianPositionCommand.srv
   HybridImpedanceCommand.srv
+  FtSensorInit.srv
 )
 
 generate_messages(

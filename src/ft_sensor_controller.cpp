@@ -53,6 +53,10 @@ namespace lwr_controllers {
     sensor_ctl_init_service_ = nh.advertiseService("sensor_ctl_init",\
 						   &FtSensorController::set_sensor_initial_conditions,\
 						   this);
+    get_sensor_config_service_ = nh.advertiseService("get_sensor_config",\
+						     &FtSensorController::get_sensor_config, \
+						     this);
+
     return true;
   }
 
@@ -122,8 +126,8 @@ namespace lwr_controllers {
     tf::wrenchMsgToKDL(msg->wrench, ft_wrench_raw_);
   }
 
-  bool FtSensorController::set_sensor_initial_conditions(std_srvs::Empty::Request& req,	\
-							 std_srvs::Empty::Response& res)
+  bool FtSensorController::set_sensor_initial_conditions(lwr_force_position_controllers::FtSensorInit::Request& req,\
+							 lwr_force_position_controllers::FtSensorInit::Response& res)
   {
     // set ft_sensor_offset_
     ft_sensor_offset_ = ft_wrench_raw_;
@@ -152,8 +156,35 @@ namespace lwr_controllers {
     write_vector_to_yaml("base_tool_weight_com", base_tool_weight_com_);
     write_vector_to_yaml("p_wrist_toolcom", p_wrist_toolcom_);
 
+    // send response back
+    lwr_force_position_controllers::FtSensorInitMsg msg;
+    msg.arm_x = p_wrist_toolcom_.x();
+    msg.arm_y = p_wrist_toolcom_.y();
+    msg.arm_z = p_wrist_toolcom_.z();
+    msg.mass = ft_sensor_offset_.force.Norm() / 9.81;
+    res.message = msg;
+
     return true;
   }
+
+  bool FtSensorController::get_sensor_config(lwr_force_position_controllers::FtSensorInit::Request& req,\
+					     lwr_force_position_controllers::FtSensorInit::Response& res)
+  {
+    // FIXME:
+    // add a field in FtSensorInitMsg so that we can use one service to get the current
+    // configuration AND (if needed) update it using new sensor data
+    //
+
+    lwr_force_position_controllers::FtSensorInitMsg msg;
+    msg.arm_x = p_wrist_toolcom_.x();
+    msg.arm_y = p_wrist_toolcom_.y();
+    msg.arm_z = p_wrist_toolcom_.z();
+    msg.mass = ft_sensor_offset_.force.Norm() / 9.81;
+    res.message = msg;
+
+    return true;
+  }
+
 
   void FtSensorController::write_vector_to_yaml(std::string field, KDL::Wrench wrench)
   {
