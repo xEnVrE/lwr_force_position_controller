@@ -44,7 +44,8 @@ namespace lwr_controllers {
 
     // instantiate solvers
     dyn_param_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
-    ik_solver_.reset(new KDL::ChainIkSolverPos_LMA(extended_chain_));
+    ik_solver_.reset(new KDL::ChainIkSolverPos_LMA(kdl_chain_));
+    ee_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(extended_chain_));
     if (use_simulation_)
       {
 	jacobian_solver_.reset(new KDL::ChainJntToJacSolver(kdl_chain_));
@@ -64,8 +65,11 @@ namespace lwr_controllers {
       }
 
     // advertise CartesianPositionCommand service
-    cmd_service_ = n.advertiseService("set_cartesian_position_command",\
-				      &CartesianPositionController::set_cmd, this); 
+    set_cmd_service_ = n.advertiseService("set_cartesian_position_command", \
+					  &CartesianPositionController::set_cmd, this); 
+
+    get_cmd_service_ = n.advertiseService("get_cartesian_position_command", \
+					  &CartesianPositionController::get_cmd, this); 
 
     if(use_simulation_)
       {
@@ -188,6 +192,28 @@ namespace lwr_controllers {
 
     // evaluate the new desired configuration 
     evaluate_q_des(des_pose, des_attitude);
+
+    return true;
+  }
+
+  bool CartesianPositionController::get_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request &req,\
+					    lwr_force_position_controllers::CartesianPositionCommand::Response &res)
+  {
+    KDL::Frame ee_fk_frame;
+    double yaw, pitch, roll;
+    ee_fk_solver_->JntToCart(joint_msr_states_.q, ee_fk_frame);
+    ee_fk_frame.M.GetEulerZYX(yaw, pitch, roll);
+    
+    // get command
+    res.command.x = ee_fk_frame.p.x();
+    res.command.y = ee_fk_frame.p.y();
+    res.command.z = ee_fk_frame.p.z();
+
+    res.command.yaw = yaw;
+    res.command.pitch = pitch;
+    res.command.roll = roll;
+    res.command.kp = kp_;
+    res.command.kd = kd_;
 
     return true;
   }

@@ -35,6 +35,8 @@ namespace lwr_controllers
     void evaluate_q_des(KDL::Vector&, KDL::Rotation&);
     bool set_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request&,\
 		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
+    bool get_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request&,\
+		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
 
     // joint position controller
     double kp_, kd_;
@@ -48,6 +50,7 @@ namespace lwr_controllers
 
     // forward kinematics
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> fk_solver_;
+    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> ee_fk_solver_;
 
     // jacobian solver
     boost::scoped_ptr<KDL::ChainJntToJacSolver> jacobian_solver_;
@@ -56,8 +59,9 @@ namespace lwr_controllers
     ros::Subscriber sub_force_;
     KDL::Wrench wrench_wrist_;
 
-    // CartesianPositionCtlCmd service
-    ros::ServiceServer cmd_service_;
+    // CartesianPositionCommand services
+    ros::ServiceServer set_cmd_service_;
+    ros::ServiceServer get_cmd_service_;
 
     // use simulation flag
     bool use_simulation_;
