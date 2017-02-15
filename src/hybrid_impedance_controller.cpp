@@ -31,7 +31,7 @@ namespace lwr_controllers {
     // get publish rate from rosparam
     n.getParam("publish_rate", publish_rate_);
       
-    // advertise SetHybridImpedanceCommand service
+    // advertise HybridImpedanceCommand service
     cmd_service_ = n.advertiseService("set_hybrid_impedance_command", &HybridImpedanceController::set_cmd, this);
     
     // instantiate default controller gains
@@ -193,8 +193,8 @@ namespace lwr_controllers {
     set_ws_base_angles(ws_base_angles.at(0), ws_base_angles.at(1), ws_base_angles.at(2));
   }
 
-  bool HybridImpedanceController::set_cmd(lwr_force_position_controllers::SetHybridImpedanceCommand::Request &req,\
-					  lwr_force_position_controllers::SetHybridImpedanceCommand::Response &res)
+  bool HybridImpedanceController::set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
+					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
   {
     // set the desired position requested by the user
     x_des_(0) = req.command.x;

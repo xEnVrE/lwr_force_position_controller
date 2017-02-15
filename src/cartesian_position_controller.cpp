@@ -63,7 +63,7 @@ namespace lwr_controllers {
 	q_des_(i) = joint_handles_[i].getPosition();
       }
 
-    // advertise SetCartesianPositionCommand service
+    // advertise CartesianPositionCommand service
     cmd_service_ = n.advertiseService("set_cartesian_position_command",\
 				      &CartesianPositionController::set_cmd, this); 
 
@@ -163,8 +163,8 @@ namespace lwr_controllers {
     wrench_wrist_ = - wrench_wrist_topic;
   }
 
-  bool CartesianPositionController::set_cmd(lwr_force_position_controllers::SetCartesianPositionCommand::Request &req,\
-					  lwr_force_position_controllers::SetCartesianPositionCommand::Response &res)
+  bool CartesianPositionController::set_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request &req,\
+					  lwr_force_position_controllers::CartesianPositionCommand::Response &res)
   {
     KDL::Vector des_pose = KDL::Vector::Zero();
     KDL::Rotation des_attitude = KDL::Rotation::Identity();

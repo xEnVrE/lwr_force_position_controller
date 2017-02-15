@@ -2,8 +2,8 @@
 #define LWR_FORCE_POSITION_CONTROLLERS_CARTESIAN_POSITION_CONTROLLER_H
 
 #include <lwr_controllers/KinematicChainControllerBase.h>
-#include <lwr_force_position_controllers/SetCartesianPositionCommand.h>
 #include <lwr_force_position_controllers/CartesianPositionCommand.h>
+#include <lwr_force_position_controllers/CartesianPositionCommandMsg.h>
 #include <geometry_msgs/WrenchStamped.h>
 #include <boost/scoped_ptr.hpp>
 
@@ -33,8 +33,8 @@ namespace lwr_controllers
   private:
     void ft_sensor_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void evaluate_q_des(KDL::Vector&, KDL::Rotation&);
-    bool set_cmd(lwr_force_position_controllers::SetCartesianPositionCommand::Request&,\
-		 lwr_force_position_controllers::SetCartesianPositionCommand::Response&);
+    bool set_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request&,\
+		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
 
     // joint position controller
     double kp_, kd_;

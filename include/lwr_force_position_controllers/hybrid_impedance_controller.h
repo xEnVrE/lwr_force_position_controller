@@ -4,7 +4,7 @@
 #include "cartesian_inverse_dynamics_controller.h"
 
 // service
-#include <lwr_force_position_controllers/SetHybridImpedanceCommand.h>
+#include <lwr_force_position_controllers/HybridImpedanceCommand.h>
 
 // msg include
 #include <geometry_msgs/WrenchStamped.h>
@@ -23,8 +23,8 @@ namespace lwr_controllers
     void update(const ros::Time& time, const ros::Duration& period);
 
   private:
-    bool set_cmd(lwr_force_position_controllers::SetHybridImpedanceCommand::Request &req, \
-		 lwr_force_position_controllers::SetHybridImpedanceCommand::Response &res);
+    bool set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req, \
+		 lwr_force_position_controllers::HybridImpedanceCommand::Response &res);
     void get_parameters(ros::NodeHandle &n);
     void set_circular_traj(const ros::Duration& period);
     void publish_data(ros::Publisher& pub, KDL::Wrench wrench);

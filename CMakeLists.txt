@@ -21,16 +21,14 @@ include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 
 add_message_files(
    FILES
-   CartesianImpedancePoint.msg
-   CartesianPositionCommand.msg
-   HybridImpedanceCommand.msg
+   CartesianPositionCommandMsg.msg
+   HybridImpedanceCommandMsg.msg
 )
 
 add_service_files(
   FILES
-  SetCartesianImpedanceCommand.srv
-  SetCartesianPositionCommand.srv
-  SetHybridImpedanceCommand.srv
+  CartesianPositionCommand.srv
+  HybridImpedanceCommand.srv
 )
 
 generate_messages(
