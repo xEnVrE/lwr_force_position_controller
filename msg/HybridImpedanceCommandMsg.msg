@@ -8,8 +8,12 @@ float64 kd_f
 # desired position
 float64 x
 float64 y
+# desired YPR (aka ZYX)
+float64 yaw
+float64 pitch
+float64 roll
 # desired force
-float64 z
+float64 forcez
 #circle trajectory
 bool circle_trj
 float64 frequency

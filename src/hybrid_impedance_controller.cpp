@@ -32,7 +32,10 @@ namespace lwr_controllers {
     n.getParam("publish_rate", publish_rate_);
       
     // advertise HybridImpedanceCommand service
-    cmd_service_ = n.advertiseService("set_hybrid_impedance_command", &HybridImpedanceController::set_cmd, this);
+    set_cmd_service_ = n.advertiseService("set_hybrid_impedance_command",\
+					  &HybridImpedanceController::set_cmd, this);
+    get_cmd_service_ = n.advertiseService("get_hybrid_impedance_command",\
+					  &HybridImpedanceController::get_cmd, this);
     
     // instantiate default controller gains
     Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KP;
@@ -196,9 +199,14 @@ namespace lwr_controllers {
   bool HybridImpedanceController::set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
 					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
   {
-    // set the desired position requested by the user
+    // set the desired position and attitude requested by the user
+    // position
     x_des_(0) = req.command.x;
     x_des_(1) = req.command.y;
+    // attitude
+    x_des_(3) = req.command.yaw;
+    x_des_(4) = req.command.pitch;
+    x_des_(5) = req.command.roll;
 
     // reset the derivatives 
     xdot_des_(0) = 0;
@@ -207,7 +215,7 @@ namespace lwr_controllers {
     xdotdot_des_(1) = 0;
 
     // set the desired force
-    fz_des_ = req.command.z;
+    fz_des_ = req.command.forcez;
     
     // set circle trajectory
     circle_trj_ = req.command.circle_trj;
@@ -255,6 +263,37 @@ namespace lwr_controllers {
     // set the acceleration
     xdotdot_des_(0) = ddx_trj;
     xdotdot_des_(1) = ddy_trj;
+  }
+
+  bool HybridImpedanceController::get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
+					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
+  {
+    // get gains
+    res.command.kp = Kp_(0, 0);
+    res.command.kd = Kd_(0, 0);
+    res.command.km_f = km_f_;
+    res.command.kd_f = kd_f_;
+
+    // get position
+    res.command.x = x_des_(0);
+    res.command.y = x_des_(1);
+
+    // get attitude
+    res.command.yaw = x_des_(3);
+    res.command.pitch = x_des_(4);
+    res.command.roll = x_des_(5);
+    
+    // get force
+    res.command.forcez = fz_des_;
+
+    // get circle trajectory
+    res.command.circle_trj = circle_trj_;
+    res.command.frequency = circle_trj_frequency_;
+    res.command.radius = circle_trj_radius_;
+    res.command.center_x = circle_trj_center_x_;
+    res.command.center_y = circle_trj_center_y_;
+
+    return true;
   }
 
   void HybridImpedanceController::publish_data(ros::Publisher& pub, KDL::Wrench wrench)

@@ -25,13 +25,16 @@ namespace lwr_controllers
   private:
     bool set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req, \
 		 lwr_force_position_controllers::HybridImpedanceCommand::Response &res);
+    bool get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req, \
+		 lwr_force_position_controllers::HybridImpedanceCommand::Response &res);
     void get_parameters(ros::NodeHandle &n);
     void set_circular_traj(const ros::Duration& period);
     void publish_data(ros::Publisher& pub, KDL::Wrench wrench);
     void publish_data(ros::Publisher& pub, Eigen::VectorXd& vector);
 
-    // SetHybridImpiedanceCommand service
-    ros::ServiceServer cmd_service_;
+    // HybridImpiedanceCommand service
+    ros::ServiceServer set_cmd_service_;
+    ros::ServiceServer get_cmd_service_;
     
     // hybrid impedance controller (pose)
     Eigen::VectorXd x_des_, xdot_des_, xdotdot_des_;
