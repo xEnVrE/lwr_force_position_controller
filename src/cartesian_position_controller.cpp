@@ -44,7 +44,7 @@ namespace lwr_controllers {
 
     // instantiate solvers
     dyn_param_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
-    ik_solver_.reset(new KDL::ChainIkSolverPos_LMA(kdl_chain_));
+    ik_solver_.reset(new KDL::ChainIkSolverPos_LMA(extended_chain_));
     ee_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(extended_chain_));
     if (use_simulation_)
       {
@@ -201,7 +201,7 @@ namespace lwr_controllers {
   {
     KDL::Frame ee_fk_frame;
     double yaw, pitch, roll;
-    ee_fk_solver_->JntToCart(joint_msr_states_.q, ee_fk_frame);
+    ee_fk_solver_->JntToCart(q_des_, ee_fk_frame);
     ee_fk_frame.M.GetEulerZYX(yaw, pitch, roll);
     
     // get command

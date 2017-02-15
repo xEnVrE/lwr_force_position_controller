@@ -44,7 +44,7 @@ lwr:
     type: lwr_force_position_controllers/CartesianPositionController
     root_name: vito_anchor
     tip_name: lwr_7_link
-    p_wrist_ee: [0, 0, 0.03]
+    p_wrist_ee: [0, 0, 0.025]
 
   # Hybrid Impedance Controller 
   # (Spong, Journal of Robotics And Automation, Vol. 4, Issue 5, 1988)
@@ -53,7 +53,7 @@ lwr:
     root_name: vito_anchor
     tip_name: lwr_7_link
     internal_motion_controlled_link: lwr_3_link
-    p_wrist_ee: [0, 0, 0.03]
+    p_wrist_ee: [0, 0, 0.025]
     p_base_ws: [-0.7, 0, 0.05]                                                                                                                
     ws_base_angles: [0, 0, 0]
     publish_rate: 1 #Hz
