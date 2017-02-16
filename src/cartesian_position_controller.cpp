@@ -56,8 +56,14 @@ namespace lwr_controllers {
     kp_ = DEFAULT_KP;
     kd_ = DEFAULT_KD;
 
-    // resize desired quantities
+    // resize and set desired quantities
     q_des_.resize(kdl_chain_.getNrOfJoints());
+    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
+      {
+	//defaults to the current configuration
+	q_des_(i) = joint_handles_[i].getPosition();
+      }
+
     // advertise CartesianPositionCommand service
     set_cmd_service_ = n.advertiseService("set_cartesian_position_command", \
 					  &CartesianPositionController::set_cmd, this); 
