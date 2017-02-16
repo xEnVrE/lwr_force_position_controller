@@ -37,7 +37,9 @@ namespace lwr_controllers
 		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
     bool get_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request&,\
 		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
+    void publish_data(ros::Publisher& pub, KDL::JntArray& array);
     void print_joint_array(KDL::JntArray& array);
+
     // joint position controller
     double kp_, kd_;
    
@@ -71,6 +73,11 @@ namespace lwr_controllers
 
     // extended kdl chain
     KDL::Chain extended_chain_;
+
+    // publisher to monitor data
+    ros::Time last_publish_time_;
+    double publish_rate_;
+    ros::Publisher pub_error_;
 
     // inverse dynamics controller flag
     bool use_inverse_dynamics_controller_;

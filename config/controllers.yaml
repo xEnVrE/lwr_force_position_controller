@@ -45,6 +45,7 @@ lwr:
     root_name: vito_anchor
     tip_name: lwr_7_link
     p_wrist_ee: [0, 0, 0.025]
+    publish_rate: 1000 #Hz
 
   # Hybrid Impedance Controller 
   # (Spong, Journal of Robotics And Automation, Vol. 4, Issue 5, 1988)

@@ -11,6 +11,8 @@
 
 #include <lwr_force_position_controllers/cartesian_position_controller.h>
 
+#include <lwr_force_position_controllers/CartesianPositionErrorMsg.h>
+
 #define DEFAULT_KP 30
 #define DEFAULT_KD 30
 
@@ -27,6 +29,9 @@ namespace lwr_controllers {
     // get use_simulation parameter from rosparam server
     ros::NodeHandle nh;
     nh.getParam("use_simulation", use_simulation_);
+
+    // get publish rate from rosparam
+    n.getParam("publish_rate", publish_rate_);
 
     // get the p_wrist_ee arm from the rosparam server
     std::vector<double> p_wrist_ee;
@@ -71,6 +76,9 @@ namespace lwr_controllers {
     get_cmd_service_ = n.advertiseService("get_cartesian_position_command", \
 					  &CartesianPositionController::get_cmd, this); 
 
+    // advertise topics
+    pub_error_ = n.advertise<lwr_force_position_controllers::CartesianPositionErrorMsg>("error", 1000);
+
     if(use_simulation_)
       {
 	// subscribe to force/torque sensor topic
@@ -80,7 +88,7 @@ namespace lwr_controllers {
 				 &CartesianPositionController::ft_sensor_callback, this);
       }
 	
-    use_inverse_dynamics_controller_ = false;
+    use_inverse_dynamics_controller_ = true;
 
     return true;
   }
@@ -93,6 +101,9 @@ namespace lwr_controllers {
 	//defaults to the current configuration
 	q_des_(i) = joint_handles_[i].getPosition();
       }
+
+    // initialize publish time
+    last_publish_time_ = time;
   }
 
   void CartesianPositionController::update(const ros::Time& time, const ros::Duration& period)
@@ -106,9 +117,14 @@ namespace lwr_controllers {
   
     // compute control law
     KDL::JntArray tau_cmd;
+    KDL::JntArray q_error;
     tau_cmd.resize(kdl_chain_.getNrOfJoints());
+    q_error.resize(kdl_chain_.getNrOfJoints());
     for(size_t i=0; i<joint_handles_.size(); i++)
-      tau_cmd(i) = kp_ * (q_des_(i) - joint_msr_states_.q(i)) - kd_ * joint_msr_states_.qdot(i);
+      {
+	q_error(i) = q_des_(i) - joint_msr_states_.q(i);
+	tau_cmd(i) = kp_ * q_error(i) - kd_ * joint_msr_states_.qdot(i);
+      }
 
     // ONLY for inverse dynamics strategy
     KDL::JntSpaceInertiaMatrix B;
@@ -192,6 +208,24 @@ namespace lwr_controllers {
 	    joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
 	  }
       }
+
+    if(time > last_publish_time_ + ros::Duration(1.0 / publish_rate_))
+      {
+	//update next tick
+	last_publish_time_ += ros::Duration(1.0 / publish_rate_);
+
+	// publish data
+	publish_data(pub_error_, q_error);
+      }
+  }
+
+  void CartesianPositionController::publish_data(ros::Publisher& pub, KDL::JntArray& array)
+  {
+    lwr_force_position_controllers::CartesianPositionErrorMsg msg;
+    msg.header.stamp = ros::Time::now();
+    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
+      msg.q_error.push_back(array(i));
+    pub.publish(msg);
   }
   
   void CartesianPositionController::ft_sensor_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg)

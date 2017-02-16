@@ -24,6 +24,7 @@ add_message_files(
    CartesianPositionCommandMsg.msg
    HybridImpedanceCommandMsg.msg
    FtSensorInitMsg.msg
+   CartesianPositionErrorMsg.msg
 )
 
 add_service_files(
