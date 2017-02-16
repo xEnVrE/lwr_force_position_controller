@@ -324,7 +324,7 @@ namespace lwr_controllers {
     for(int i=0; i<joint_handles_.size(); i++) 
       if((q_des(i) <  joint_limits_.min(i)) || (q_des(i) >  joint_limits_.max(i)))
 	{
-	  std::cout<<"limits achieves"<<std::endl;
+	  std::cout<< "[cart_pos]Sorry the configuration found exceeds joint limits! Try again." <<std::endl;
 	  return;
 	}
     q_des_ = q_des;
