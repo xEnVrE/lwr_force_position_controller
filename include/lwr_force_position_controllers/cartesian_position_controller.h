@@ -37,7 +37,7 @@ namespace lwr_controllers
 		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
     bool get_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request&,\
 		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
-
+    void print_joint_array(KDL::JntArray& array);
     // joint position controller
     double kp_, kd_;
    
@@ -72,6 +72,8 @@ namespace lwr_controllers
     // extended kdl chain
     KDL::Chain extended_chain_;
 
+    // inverse dynamics controller flag
+    bool use_inverse_dynamics_controller_;
   };
 
 } // namespace

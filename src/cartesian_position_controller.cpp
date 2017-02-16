@@ -80,6 +80,8 @@ namespace lwr_controllers {
 				 &CartesianPositionController::ft_sensor_callback, this);
       }
 	
+    use_inverse_dynamics_controller_ = false;
+
     return true;
   }
 
@@ -108,14 +110,18 @@ namespace lwr_controllers {
     for(size_t i=0; i<joint_handles_.size(); i++)
       tau_cmd(i) = kp_ * (q_des_(i) - joint_msr_states_.q(i)) - kd_ * joint_msr_states_.qdot(i);
 
-    // evaluate inertia matrix and coriolis effort required to invert the dynamics
+    // ONLY for inverse dynamics strategy
     KDL::JntSpaceInertiaMatrix B;
     KDL::JntArray C;
     B.resize(kdl_chain_.getNrOfJoints());
     C.resize(kdl_chain_.getNrOfJoints());
-    dyn_param_solver_->JntToMass(joint_msr_states_.q, B);
-    dyn_param_solver_->JntToCoriolis(joint_msr_states_.q, joint_msr_states_.qdot, C);
-
+    if(use_inverse_dynamics_controller_)
+      {
+	// evaluate inertia matrix and coriolis effort required to invert the dynamics
+	dyn_param_solver_->JntToMass(joint_msr_states_.q, B);
+	dyn_param_solver_->JntToCoriolis(joint_msr_states_.q, joint_msr_states_.qdot, C);
+      }
+    
     KDL::Jacobian J_;
     Eigen::Matrix<double, 6,1> base_F_wrist_;
     if (use_simulation_)
@@ -127,44 +133,67 @@ namespace lwr_controllers {
 	// (simulation only, the real kuka compensate for mass tool internally)
 	////////////////////////////////////////////////////////////////////////////////
 	//
-
+	
 	// evaluate the current geometric jacobian J(q)
 	J_.resize(kdl_chain_.getNrOfJoints());
 	jacobian_solver_->JntToJac(joint_msr_states_.q, J_);
-
+	
 	// evaluate the forward kinematics required to project the wrench
 	KDL::Frame fk_frame;
 	KDL::Wrench base_wrench_wrist;
 	fk_solver_->JntToCart(joint_msr_states_.q, fk_frame);
 	base_wrench_wrist = fk_frame.M * wrench_wrist_;
-
+	
 	// write down onto an eigen vector
 	tf::wrenchKDLToEigen(base_wrench_wrist, base_F_wrist_);      
 	//
 	///////////////////////////////////////////////////////////////////////////////
       }
 
-    // evaluate B * tau_cmd
-    KDL::JntArray B_tau_cmd;
-    B_tau_cmd.resize(kdl_chain_.getNrOfJoints());
-    if (use_simulation_)
-      // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
-      B_tau_cmd.data = B.data * tau_cmd.data + C.data + J_.data.transpose() * base_F_wrist_;
-    else
-      B_tau_cmd.data = B.data * tau_cmd.data + C.data;
-
-    // set joint efforts
-    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
+    // ONLY for inverse dynamics strategy
+    if(use_inverse_dynamics_controller_)
       {
-	joint_handles_[i].setCommand(B_tau_cmd(i));
+	// evaluate B * tau_cmd
+	KDL::JntArray B_tau_cmd;
+	B_tau_cmd.resize(kdl_chain_.getNrOfJoints());
+	if (use_simulation_)
+	  // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
+	  B_tau_cmd.data = B.data * tau_cmd.data + C.data + J_.data.transpose() * base_F_wrist_;
+	else
+	  B_tau_cmd.data = B.data * tau_cmd.data + C.data;
 
-	// required to exploit the JOINT IMPEDANCE MODE of the kuka manipulator
-	joint_stiffness_handles_[i].setCommand(0);
-	joint_damping_handles_[i].setCommand(0);
-	joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
+	// set joint efforts
+	for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
+	  {
+	    joint_handles_[i].setCommand(B_tau_cmd(i));
+	    
+	    // required to exploit the JOINT IMPEDANCE MODE of the kuka manipulator
+	    joint_stiffness_handles_[i].setCommand(0);
+	    joint_damping_handles_[i].setCommand(0);
+	    joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
+	  }
+      }
+
+    // ONLY for PD strategy
+    else
+      {
+	if (use_simulation_)
+	  // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
+	  tau_cmd.data = tau_cmd.data + J_.data.transpose() * base_F_wrist_;
+
+	// set joint efforts
+	for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
+	  {
+	    joint_handles_[i].setCommand(tau_cmd(i));
+	    
+	    // required to exploit the JOINT IMPEDANCE MODE of the kuka manipulator
+	    joint_stiffness_handles_[i].setCommand(0);
+	    joint_damping_handles_[i].setCommand(0);
+	    joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
+	  }
       }
   }
-
+  
   void CartesianPositionController::ft_sensor_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg)
   {    
     KDL::Wrench wrench_wrist_topic;
@@ -198,6 +227,9 @@ namespace lwr_controllers {
     if (req.command.kd != -1)
       kd_ = req.command.kd;
 
+    // set desired controller strategy
+    use_inverse_dynamics_controller_ =  res.command.use_inverse_dynamics_controller;
+
     // evaluate the new desired configuration 
     evaluate_q_des(des_pose, des_attitude);
 
@@ -212,17 +244,21 @@ namespace lwr_controllers {
     ee_fk_solver_->JntToCart(q_des_, ee_fk_frame);
     ee_fk_frame.M.GetEulerZYX(yaw, pitch, roll);
     
-    // get command
+    // get desired position 
     res.command.x = ee_fk_frame.p.x();
     res.command.y = ee_fk_frame.p.y();
     res.command.z = ee_fk_frame.p.z();
 
+    // get desired attitude
     res.command.yaw = yaw;
     res.command.pitch = pitch;
     res.command.roll = roll;
+
+    // get desired gain
     res.command.kp = kp_;
     res.command.kd = kd_;
 
+    res.command.use_inverse_dynamics_controller = use_inverse_dynamics_controller_;
     return true;
   }
 
@@ -232,6 +268,8 @@ namespace lwr_controllers {
     // evaluate the new desired configuration q_des
 
     KDL::Frame x_des;
+    KDL::JntArray q_des;
+    q_des.resize(kdl_chain_.getNrOfJoints());
 
     // get the current robot configuration
     for(size_t i=0; i<joint_handles_.size(); i++)
@@ -241,15 +279,38 @@ namespace lwr_controllers {
     x_des = KDL::Frame(des_attitude, des_pose);
 
     // evaluate q_des = ik(x_des)
-    ik_solver_->CartToJnt(joint_msr_states_.q, x_des, q_des_);
-    
-    // normalize q_des_i between - M_PI and M_PI
-    for(int i=0; i<joint_handles_.size(); i++) {
-      q_des_(i) =  angles::normalize_angle(q_des_(i));
-    }
+    ik_solver_->CartToJnt(joint_msr_states_.q, x_des, q_des);
 
+    // normalize q_des between - M_PI and M_PI
+    for(int i=0; i<joint_handles_.size(); i++) 
+      q_des(i) =  angles::normalize_angle(q_des(i));
+
+    // verify that q_des respect joint position limits 
+    print_joint_array(q_des);
+    for(int i=0; i<joint_handles_.size(); i++) 
+      if((q_des(i) <  joint_limits_.min(i)) || (q_des(i) >  joint_limits_.max(i)))
+	{
+	  std::cout<<"limits achieves"<<std::endl;
+	  return;
+	}
+    q_des_ = q_des;
+    
+    return;
   }
 
+  void CartesianPositionController::print_joint_array(KDL::JntArray& array)
+  {
+    std::cout << std::fixed;
+    std::cout << std::setprecision(3);
+	
+    std::cout<<"joint \t q_des \t q_min\t q_max \t"<<std::endl;
+    std::cout<<"*******************************"<<std::endl;
+
+    for(int i=0; i<joint_handles_.size(); i++)
+      std::cout << i << "\t" << array(i) << "\t" << joint_limits_.min(i) << "\t" << joint_limits_.max(i) << std::endl;
+      
+    std::cout<<"*******************************"<<std::endl;
+  }
 
 }// namespace
 

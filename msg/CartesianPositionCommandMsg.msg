@@ -10,3 +10,5 @@ float64 z
 float64 yaw
 float64 pitch
 float64 roll
+# desired controller strategy
+bool use_inverse_dynamics_controller
