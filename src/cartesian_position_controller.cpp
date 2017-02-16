@@ -322,7 +322,7 @@ namespace lwr_controllers {
     // verify that q_des respect joint position limits 
     print_joint_array(q_des);
     for(int i=0; i<joint_handles_.size(); i++) 
-      if((q_des(i) <  joint_limits_.min(i)) || (q_des(i) >  joint_limits_.max(i)))
+      if((q_des(i) <=  joint_limits_.min(i)) || (q_des(i) >= joint_limits_.max(i)))
 	{
 	  std::cout<< "[cart_pos]Sorry the configuration found exceeds joint limits! Try again." <<std::endl;
 	  return;
