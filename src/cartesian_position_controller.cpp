@@ -345,7 +345,9 @@ namespace lwr_controllers {
 
     for(int i=0; i<joint_handles_.size(); i++)
       {
+	std::cout << std::setprecision(2);
 	std::cout << i << "\t" << 180.0 / M_PI * array(i);
+	std::cout << std::setprecision(0);
 	std::cout << "\t" << 180.0 / M_PI * joint_limits_.min(i);
 	std::cout << "\t" << 180.0 / M_PI * joint_limits_.max(i) << std::endl;
       }
