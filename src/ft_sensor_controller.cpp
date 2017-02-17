@@ -32,9 +32,9 @@ namespace lwr_controllers {
     nh.getParam("publish_rate", publish_rate_);
 
     // get the ft sensor offset from rosparam and set ft_sensor_offset_
-    std::vector<double> ft_sensor_offset;
-    nh.getParam("ft_sensor_offset", ft_sensor_offset);
-    set_wrench(ft_sensor_offset, ft_sensor_offset_);
+    std::vector<double> ft_sensor_bias;
+    nh.getParam("ft_sensor_bias", ft_sensor_bias);
+    set_wrench(ft_sensor_bias, ft_sensor_bias_);
 
     // get p_wrist_toolcom and set p_wrist_toolcom_
     // p_wrist_toolcom_ = vector from wrist center to the com of the tool
@@ -50,12 +50,15 @@ namespace lwr_controllers {
     set_wrench(weight, base_tool_weight_com_);
 
     // advertise SensorCtlInitService service
-    sensor_ctl_init_service_ = nh.advertiseService("sensor_ctl_init",\
-						   &FtSensorController::set_sensor_initial_conditions,\
-						   this);
-    get_sensor_config_service_ = nh.advertiseService("get_sensor_config",\
-						     &FtSensorController::get_sensor_config, \
+    estimate_tool_service_ = nh.advertiseService("estimate_tool",\
+						 &FtSensorController::estimate_tool, \
+						 this);
+    get_estimated_tool_service_ = nh.advertiseService("get_estimated_tool",\
+						     &FtSensorController::get_estimated_tool, \
 						     this);
+    set_sensor_bias_service_ = nh.advertiseService("set_sensor_bias",\
+						   &FtSensorController::set_sensor_bias, \
+						   this);
 
     return true;
   }
@@ -73,7 +76,7 @@ namespace lwr_controllers {
     // sensor offsets its measure
     // so it has to be corrected like this
     wrench = ft_wrench_raw_;              //<--- from topic callback
-    wrench += ft_sensor_offset_;          //<--- set in init()
+    wrench += ft_sensor_bias_;          //<--- set in init()
     
     // get current robot configuration
     KDL::JntArray joint_position;
@@ -126,14 +129,12 @@ namespace lwr_controllers {
     tf::wrenchMsgToKDL(msg->wrench, ft_wrench_raw_);
   }
 
-  bool FtSensorController::set_sensor_initial_conditions(lwr_force_position_controllers::FtSensorInit::Request& req,\
-							 lwr_force_position_controllers::FtSensorInit::Response& res)
+  bool FtSensorController::estimate_tool(lwr_force_position_controllers::FtSensorToolEstimation::Request& req,\
+					 lwr_force_position_controllers::FtSensorToolEstimation::Response& res)
   {
-    // set ft_sensor_offset_
-    ft_sensor_offset_ = ft_wrench_raw_;
 
     // evaluate end-effector weight
-    base_tool_weight_com_ = KDL::Wrench(KDL::Vector(0, 0, -ft_sensor_offset_.force.Norm()),\
+    base_tool_weight_com_ = KDL::Wrench(KDL::Vector(0, 0, -ft_wrench_raw_.force.Norm()),\
 					KDL::Vector::Zero());
     
     // evaluate the coordinates of the tool com
@@ -145,46 +146,49 @@ namespace lwr_controllers {
     Eigen::Matrix<double, 3, 1> torque;
     Eigen::Matrix3d pinv;
     
-    tf::vectorKDLToEigen(ft_sensor_offset_.force, force);
-    tf::vectorKDLToEigen(ft_sensor_offset_.torque, torque);
+    tf::vectorKDLToEigen(ft_wrench_raw_.force, force);
+    tf::vectorKDLToEigen(ft_wrench_raw_.torque, torque);
 
     skew_pinv(force, pinv);
     tf::vectorEigenToKDL(-pinv * torque, p_wrist_toolcom_);
 
     // save to file    
-    write_vector_to_yaml("ft_sensor_offset", ft_sensor_offset_);
     write_vector_to_yaml("base_tool_weight_com", base_tool_weight_com_);
     write_vector_to_yaml("p_wrist_toolcom", p_wrist_toolcom_);
 
     // send response back
-    lwr_force_position_controllers::FtSensorInitMsg msg;
+    lwr_force_position_controllers::FtSensorToolEstimationMsg msg;
     msg.arm_x = p_wrist_toolcom_.x();
     msg.arm_y = p_wrist_toolcom_.y();
     msg.arm_z = p_wrist_toolcom_.z();
-    msg.mass = ft_sensor_offset_.force.Norm() / 9.81;
+    msg.mass = ft_wrench_raw_.force.Norm() / 9.81;
     res.message = msg;
 
     return true;
   }
 
-  bool FtSensorController::get_sensor_config(lwr_force_position_controllers::FtSensorInit::Request& req,\
-					     lwr_force_position_controllers::FtSensorInit::Response& res)
+  bool FtSensorController::get_estimated_tool(lwr_force_position_controllers::FtSensorToolEstimation::Request& req,\
+					     lwr_force_position_controllers::FtSensorToolEstimation::Response& res)
   {
-    // FIXME:
-    // add a field in FtSensorInitMsg so that we can use one service to get the current
-    // configuration AND (if needed) update it using new sensor data
-    //
-
-    lwr_force_position_controllers::FtSensorInitMsg msg;
+    lwr_force_position_controllers::FtSensorToolEstimationMsg msg;
     msg.arm_x = p_wrist_toolcom_.x();
     msg.arm_y = p_wrist_toolcom_.y();
     msg.arm_z = p_wrist_toolcom_.z();
-    msg.mass = ft_sensor_offset_.force.Norm() / 9.81;
+    msg.mass = -base_tool_weight_com_.force.z() / 9.81;
     res.message = msg;
 
     return true;
   }
 
+  bool FtSensorController::set_sensor_bias(lwr_force_position_controllers::FtSensorSetBias::Request& req,\
+					   lwr_force_position_controllers::FtSensorSetBias::Response& res)
+  {
+    ft_sensor_bias_ = ft_wrench_raw_;
+
+    write_vector_to_yaml("ft_sensor_bias", ft_sensor_bias_);
+
+    return true;
+  }
 
   void FtSensorController::write_vector_to_yaml(std::string field, KDL::Wrench wrench)
   {

@@ -23,7 +23,7 @@ add_message_files(
    FILES
    CartesianPositionCommandMsg.msg
    HybridImpedanceCommandMsg.msg
-   FtSensorInitMsg.msg
+   FtSensorToolEstimationMsg.msg
    CartesianPositionErrorMsg.msg
 )
 
@@ -31,7 +31,8 @@ add_service_files(
   FILES
   CartesianPositionCommand.srv
   HybridImpedanceCommand.srv
-  FtSensorInit.srv
+  FtSensorToolEstimation.srv
+  FtSensorSetBias.srv
 )
 
 generate_messages(

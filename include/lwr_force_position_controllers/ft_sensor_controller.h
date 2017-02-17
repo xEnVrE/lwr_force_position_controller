@@ -4,7 +4,8 @@
 #include <lwr_controllers/KinematicChainControllerBase.h>
 #include <boost/scoped_ptr.hpp>
 #include <geometry_msgs/WrenchStamped.h>
-#include <lwr_force_position_controllers/FtSensorInit.h>
+#include <lwr_force_position_controllers/FtSensorToolEstimation.h>
+#include <lwr_force_position_controllers/FtSensorSetBias.h>
 #include <yaml-cpp/yaml.h>
 
 //KDL include
@@ -25,10 +26,12 @@ namespace lwr_controllers
   private:
     void ft_sensor_topic_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void publish_data(KDL::Wrench wrench, ros::Publisher& pub);
-    bool set_sensor_initial_conditions(lwr_force_position_controllers::FtSensorInit::Request& req,\
-				       lwr_force_position_controllers::FtSensorInit::Response& res);
-    bool get_sensor_config(lwr_force_position_controllers::FtSensorInit::Request& req,\
-			   lwr_force_position_controllers::FtSensorInit::Response& res);
+    bool estimate_tool(lwr_force_position_controllers::FtSensorToolEstimation::Request& req,\
+		       lwr_force_position_controllers::FtSensorToolEstimation::Response& res);
+    bool get_estimated_tool(lwr_force_position_controllers::FtSensorToolEstimation::Request& req,\
+			    lwr_force_position_controllers::FtSensorToolEstimation::Response& res);
+    bool set_sensor_bias(lwr_force_position_controllers::FtSensorSetBias::Request& req, \
+			 lwr_force_position_controllers::FtSensorSetBias::Response& res);
     void write_vector_to_yaml(std::string field, KDL::Wrench wrench);
     void write_vector_to_yaml(std::string field, KDL::Vector vector);
     void set_wrench(std::vector<double>& value, KDL::Wrench& wrench);
@@ -39,12 +42,13 @@ namespace lwr_controllers
     ros::Publisher  pub_ft_sensor_, pub_ft_sensor_nog_;
     ros::Subscriber sub_ft_sensor_;
     double publish_rate_;
-    KDL::Wrench ft_sensor_offset_, ft_wrench_raw_, base_tool_weight_com_;
+    KDL::Wrench ft_sensor_bias_, ft_wrench_raw_, base_tool_weight_com_;
     KDL::Vector p_wrist_toolcom_;
     
     // set_sensor_initial_conditions service
-    ros::ServiceServer sensor_ctl_init_service_;
-    ros::ServiceServer get_sensor_config_service_;
+    ros::ServiceServer estimate_tool_service_;
+    ros::ServiceServer get_estimated_tool_service_;
+    ros::ServiceServer set_sensor_bias_service_;
   };
 
 } // namespace
