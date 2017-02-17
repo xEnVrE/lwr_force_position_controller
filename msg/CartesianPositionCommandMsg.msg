@@ -12,3 +12,4 @@ float64 pitch
 float64 roll
 # desired controller strategy
 bool use_inverse_dynamics_controller
+bool hold_last_qdes_found

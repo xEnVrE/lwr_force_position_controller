@@ -262,10 +262,13 @@ namespace lwr_controllers {
       kd_ = req.command.kd;
 
     // set desired controller strategy
-    use_inverse_dynamics_controller_ =  res.command.use_inverse_dynamics_controller;
+    use_inverse_dynamics_controller_ =  req.command.use_inverse_dynamics_controller;
 
-    // evaluate the new desired configuration 
-    evaluate_q_des(des_pose, des_attitude);
+    bool hold_last_qdes_found = req.command.hold_last_qdes_found;
+    if(hold_last_qdes_found == false)
+      // evaluate the new desired configuration 
+      // if requested by the user
+      evaluate_q_des(des_pose, des_attitude);
 
     return true;
   }
@@ -341,8 +344,12 @@ namespace lwr_controllers {
     std::cout<<"*******************************"<<std::endl;
 
     for(int i=0; i<joint_handles_.size(); i++)
-      std::cout << i << "\t" << array(i) << "\t" << joint_limits_.min(i) << "\t" << joint_limits_.max(i) << std::endl;
-      
+      {
+	std::cout << i << "\t" << 180.0 / M_PI * array(i);
+	std::cout << "\t" << 180.0 / M_PI * joint_limits_.min(i);
+	std::cout << "\t" << 180.0 / M_PI * joint_limits_.max(i) << std::endl;
+      }
+    
     std::cout<<"*******************************"<<std::endl;
   }
 
