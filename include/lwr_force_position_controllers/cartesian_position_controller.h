@@ -32,7 +32,8 @@ namespace lwr_controllers
 
   private:
     void ft_sensor_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
-    void evaluate_q_des(KDL::Vector&, KDL::Rotation&);
+    void evaluate_traj_constants(KDL::Vector&, KDL::Rotation&);
+    void evaluate_traj_des(const ros::Duration& period);
     bool set_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request&,\
 		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
     bool get_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request&,\
@@ -48,7 +49,6 @@ namespace lwr_controllers
 
     // inverse kinematics q_des = ik(x_des)
     boost::scoped_ptr<KDL::ChainIkSolverPos_LMA> ik_solver_;
-    KDL::JntArray q_des_;
 
     // forward kinematics
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> fk_solver_;
@@ -56,6 +56,12 @@ namespace lwr_controllers
 
     // jacobian solver
     boost::scoped_ptr<KDL::ChainJntToJacSolver> jacobian_solver_;
+
+    // desired trajectory 
+    // s(t) = a5 * t^5 + a4 * t^4 + a3 * t^3 + a0
+    KDL::JntArrayAcc traj_des_;
+    KDL::JntArray traj_a0_, traj_a3_, traj_a4_, traj_a5_;
+    double time_;
 
     // force and torques
     ros::Subscriber sub_force_;

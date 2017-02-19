@@ -13,8 +13,19 @@
 
 #include <lwr_force_position_controllers/CartesianPositionErrorMsg.h>
 
+//-------------------------------------
+// GAIN CONSTANTS
+//-------------------------------------
 #define DEFAULT_KP 30
 #define DEFAULT_KD 30
+
+//------------------------------------------------------------------------------
+//TRAJECTORY GENERATION CONSTANTS
+//------------------------------------------------------------------------------
+#define FINAL_TIME 5.0 
+#define TRAJ_5 6.0 / (FINAL_TIME * FINAL_TIME * FINAL_TIME * FINAL_TIME * FINAL_TIME) // 5-th coeff. of trajectory polynomial
+#define TRAJ_4 -15.0 / (FINAL_TIME * FINAL_TIME * FINAL_TIME * FINAL_TIME) // 4-th coeff. of trajectory polynomial
+#define TRAJ_3 10.0 / (FINAL_TIME * FINAL_TIME * FINAL_TIME)// 3-th coeff. of trajectory polynomial
 
 namespace lwr_controllers {
 
@@ -61,13 +72,12 @@ namespace lwr_controllers {
     kp_ = DEFAULT_KP;
     kd_ = DEFAULT_KD;
 
-    // resize and set desired quantities
-    q_des_.resize(kdl_chain_.getNrOfJoints());
-    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
-      {
-	//defaults to the current configuration
-	q_des_(i) = joint_handles_[i].getPosition();
-      }
+    // resize desired trajectory
+    traj_des_.resize(kdl_chain_.getNrOfJoints());
+    traj_a0_.resize(kdl_chain_.getNrOfJoints());
+    traj_a3_.resize(kdl_chain_.getNrOfJoints());
+    traj_a4_.resize(kdl_chain_.getNrOfJoints());
+    traj_a5_.resize(kdl_chain_.getNrOfJoints());
 
     // advertise CartesianPositionCommand service
     set_cmd_service_ = n.advertiseService("set_cartesian_position_command", \
@@ -95,13 +105,16 @@ namespace lwr_controllers {
 
   void CartesianPositionController::starting(const ros::Time& time)
   {
-    // instantiate desired quantities
+
+    // set desired quantities
+    time_ = 0;
     for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
       {
-	//defaults to the current configuration
-	q_des_(i) = joint_handles_[i].getPosition();
+	traj_a0_(i) = joint_handles_[i].getPosition();
+	traj_a3_(i) = 0;
+	traj_a4_(i) = 0;
+	traj_a5_(i) = 0;
       }
-
     // initialize publish time
     last_publish_time_ = time;
   }
@@ -117,13 +130,28 @@ namespace lwr_controllers {
   
     // compute control law
     KDL::JntArray tau_cmd;
-    KDL::JntArray q_error;
+    KDL::JntArray q_error, qdot_error;
     tau_cmd.resize(kdl_chain_.getNrOfJoints());
     q_error.resize(kdl_chain_.getNrOfJoints());
-    for(size_t i=0; i<joint_handles_.size(); i++)
+    qdot_error.resize(kdl_chain_.getNrOfJoints());
+
+    if(use_inverse_dynamics_controller_)
       {
-	q_error(i) = q_des_(i) - joint_msr_states_.q(i);
-	tau_cmd(i) = kp_ * q_error(i) - kd_ * joint_msr_states_.qdot(i);
+	evaluate_traj_des(period);
+	for(size_t i=0; i<joint_handles_.size(); i++)
+	  {
+	    q_error(i) = traj_des_.q(i) - joint_msr_states_.q(i);
+	    qdot_error(i) = traj_des_.qdot(i) - joint_msr_states_.qdot(i);
+	    tau_cmd(i) = kp_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
+	  }
+      }
+    else
+      {
+	for(size_t i=0; i<joint_handles_.size(); i++)
+	  {
+	    q_error(i) = traj_des_.q(i) - joint_msr_states_.q(i);
+	    tau_cmd(i) = kp_ * q_error(i) - kd_ * joint_msr_states_.qdot(i);
+	  }
       }
 
     // ONLY for inverse dynamics strategy
@@ -268,7 +296,7 @@ namespace lwr_controllers {
     if(hold_last_qdes_found == false)
       // evaluate the new desired configuration 
       // if requested by the user
-      evaluate_q_des(des_pose, des_attitude);
+      evaluate_traj_constants(des_pose, des_attitude);
 
     return true;
   }
@@ -278,7 +306,7 @@ namespace lwr_controllers {
   {
     KDL::Frame ee_fk_frame;
     double yaw, pitch, roll;
-    ee_fk_solver_->JntToCart(q_des_, ee_fk_frame);
+    ee_fk_solver_->JntToCart(joint_msr_states_.q, ee_fk_frame);
     ee_fk_frame.M.GetEulerZYX(yaw, pitch, roll);
     
     // get desired position 
@@ -299,8 +327,8 @@ namespace lwr_controllers {
     return true;
   }
 
-  void CartesianPositionController::evaluate_q_des(KDL::Vector& des_pose,\
-						   KDL::Rotation& des_attitude)
+  void CartesianPositionController::evaluate_traj_constants(KDL::Vector& des_pose,\
+							    KDL::Rotation& des_attitude)
   {    
     // evaluate the new desired configuration q_des
 
@@ -330,9 +358,41 @@ namespace lwr_controllers {
 	  std::cout<< "[cart_pos]Sorry the configuration found exceeds joint limits! Try again." <<std::endl;
 	  return;
 	}
-    q_des_ = q_des;
+
+    // evaluate trajectory constants
+    for(int i=0; i<joint_handles_.size(); i++)
+      {
+	traj_a0_(i) = joint_msr_states_.q(i);
+	traj_a3_(i) = TRAJ_3 * (q_des(i) - joint_msr_states_.q(i));
+	traj_a4_(i) = TRAJ_4 * (q_des(i) - joint_msr_states_.q(i));
+	traj_a5_(i) = TRAJ_5 * (q_des(i) - joint_msr_states_.q(i));
+      }
+    time_ = 0;
     
     return;
+  }
+
+  void CartesianPositionController::evaluate_traj_des(const ros::Duration& period)
+  {
+    time_ += period.toSec();
+    if(time_ >= FINAL_TIME)
+      time_ = FINAL_TIME;
+    
+    for(int i=0; i<joint_handles_.size(); i++)
+      {
+	// q_des
+	traj_des_.q(i) = traj_a5_(i) * pow(time_, 5) + traj_a4_(i) * pow(time_, 4) + \
+	  traj_a3_(i) * pow(time_, 3) + traj_a0_(i);
+
+	// qdot_des
+	traj_des_.qdot(i) = 5 * traj_a5_(i) * pow(time_, 4) + 4 * traj_a4_(i) * pow(time_, 3) + \
+	  3 * traj_a3_(i) * pow(time_, 2);
+
+	// qdotdot_des
+	traj_des_.qdotdot(i) = 4 * 5 * traj_a5_(i) * pow(time_, 3) + 3 * 4 * traj_a4_(i) * pow(time_, 2) + \
+	  2 * 3 * traj_a3_(i) * time_;
+
+      }
   }
 
   void CartesianPositionController::print_joint_array(KDL::JntArray& array)
