@@ -197,14 +197,40 @@ namespace lwr_controllers {
     // ONLY for inverse dynamics strategy
     if(use_inverse_dynamics_controller_)
       {
+	// robust control
+	// w = rho * versor(z)
+	// where z = D' * Q * eta
+	// - D = [0; eye(7)]
+	// - Q: positive define matrix
+	// - eta = [q_error; qdot_error]
+	Eigen::VectorXd eta, z, w;
+	Eigen::MatrixXd D, Q;
+	double rho = 100;
+
+	eta = Eigen::VectorXd::Zero(2 * kdl_chain_.getNrOfJoints());
+	eta.head(kdl_chain_.getNrOfJoints()) = q_error.data;
+	eta.tail(kdl_chain_.getNrOfJoints()) = qdot_error.data;
+
+	Q = Eigen::MatrixXd::Identity(2 * kdl_chain_.getNrOfJoints(), 2 * kdl_chain_.getNrOfJoints());
+	D = Eigen::MatrixXd::Zero(2 * kdl_chain_.getNrOfJoints(), kdl_chain_.getNrOfJoints());
+	D.block<7, 7>(7,0) =  Eigen::MatrixXd::Identity(kdl_chain_.getNrOfJoints(), kdl_chain_.getNrOfJoints());
+
+	z = D.transpose() * Q * eta;
+
+	// avoid chattering
+	if (z.norm() > 0.001)
+	  w = rho * z / z.norm();
+	else
+	  w = rho * z / 0.001;
+
 	// evaluate B * tau_cmd
 	KDL::JntArray B_tau_cmd;
 	B_tau_cmd.resize(kdl_chain_.getNrOfJoints());
 	if (use_simulation_)
 	  // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
-	  B_tau_cmd.data = B.data * tau_cmd.data + C.data + J_.data.transpose() * base_F_wrist_;
+	  B_tau_cmd.data = B.data * (tau_cmd.data + w) + C.data + J_.data.transpose() * base_F_wrist_;
 	else
-	  B_tau_cmd.data = B.data * tau_cmd.data + C.data;
+	  B_tau_cmd.data = B.data * (tau_cmd.data + w) + C.data;
 
 	// set joint efforts
 	for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
