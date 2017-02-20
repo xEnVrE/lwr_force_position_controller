@@ -12,6 +12,9 @@
 #define DEFAULT_CIRCLE_RADIUS 0.1
 #define DEFAULT_CIRCLE_CENTER_X 0
 #define DEFAULT_CIRCLE_CENTER_Y 0
+#define P2P_COEFF_3 10.0
+#define P2P_COEFF_4 -15.0
+#define P2P_COEFF_5 6.0
 
 namespace lwr_controllers {
 
@@ -45,8 +48,18 @@ namespace lwr_controllers {
 
     // instantiate the desired trajectory
     x_des_ = Eigen::VectorXd(6);
+    x_des_final_ = Eigen::VectorXd(2);
     xdot_des_ = Eigen::VectorXd(6);
     xdotdot_des_ = Eigen::VectorXd(6);
+
+    // instantiate the matrix containing the constants
+    // of the point to point trajectory
+    p2p_trj_const_ = Eigen::MatrixXf(4, 2);
+
+    //
+    p2p_traj_duration_ = 5.0;
+    is_first_iteration_p2p_traj_ = true;
+
 
     /////////////////////////////////////////////////
     // evaluate default trajectory
@@ -58,6 +71,8 @@ namespace lwr_controllers {
     R_des.GetEulerZYX(yaw_des, pitch_des, roll_des);
 
     // constant position
+    x_des_final_(0) = 0;
+    x_des_final_(1) = 0;
     x_des_ << 0, 0, 0.1, yaw_des, pitch_des, roll_des;
     xdot_des_ << 0, 0, 0, 0, 0, 0;
     xdotdot_des_ << 0, 0, 0, 0, 0, 0;
@@ -118,7 +133,9 @@ namespace lwr_controllers {
 
     // check if the circular trajectory is requested by the user
     if (circle_trj_)
-      set_circular_traj(period);
+      eval_current_circular_traj(period);
+    else
+      eval_current_point_to_point_traj(period);
 
     // evaluate state error
     Eigen::VectorXd err_x = x_des_ - ws_x_;
@@ -171,7 +188,6 @@ namespace lwr_controllers {
 	publish_data(pub_force_des_, KDL::Wrench(KDL::Vector(0, 0, fz_des_),\
 						 KDL::Vector(0, 0, 0)));
       }
-
   }
 
   void HybridImpedanceController::get_parameters(ros::NodeHandle &n)
@@ -199,10 +215,27 @@ namespace lwr_controllers {
   bool HybridImpedanceController::set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
 					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
   {
-    // set the desired position and attitude requested by the user
+    // check if the user changed type of trajectory
+    if (circle_trj_ != req.command.circle_trj)
+      {
+	time_ = 0;
+	if(circle_trj_ == false)
+	  is_first_iteration_p2p_traj_ = true;
+      }
+    // check if the set point changed
+    if (x_des_final_(0) != req.command.x ||
+	x_des_final_(1) != req.command.y)
+      {
+	time_ = 0;
+	is_first_iteration_p2p_traj_ = true;
+      }
+
+    // set the desired final position and attitude requested by the user
     // position
-    x_des_(0) = req.command.x;
-    x_des_(1) = req.command.y;
+    x_des_final_(0) = req.command.x;
+    x_des_final_(1) = req.command.y;
+    //p2p_traj_duration_ = req.command.p2p_traj_duration;
+
     // attitude
     x_des_(3) = req.command.yaw;
     x_des_(4) = req.command.pitch;
@@ -213,11 +246,11 @@ namespace lwr_controllers {
     xdot_des_(1) = 0;
     xdotdot_des_(0) = 0;
     xdotdot_des_(1) = 0;
-
+    
     // set the desired force
     fz_des_ = req.command.forcez;
     
-    // set circle trajectory
+    // set desired parameters of the circular trajectory
     circle_trj_ = req.command.circle_trj;
     circle_trj_frequency_ = req.command.frequency;
     circle_trj_radius_ = req.command.radius;
@@ -238,7 +271,89 @@ namespace lwr_controllers {
     return true;
   }
 
-  void HybridImpedanceController::set_circular_traj(const ros::Duration& period)
+  bool HybridImpedanceController::get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
+					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
+  {
+    // get gains
+    res.command.kp = Kp_(0, 0);
+    res.command.kd = Kd_(0, 0);
+    res.command.km_f = km_f_;
+    res.command.kd_f = kd_f_;
+
+    // get position
+    res.command.x = x_des_final_(0);
+    res.command.y = x_des_final_(1);
+    res.command.p2p_traj_duration = p2p_traj_duration_;
+
+    // get attitude
+    res.command.yaw = x_des_(3);
+    res.command.pitch = x_des_(4);
+    res.command.roll = x_des_(5);
+    
+    // get force
+    res.command.forcez = fz_des_;
+
+    // get circle trajectory
+    res.command.circle_trj = circle_trj_;
+    res.command.frequency = circle_trj_frequency_;
+    res.command.radius = circle_trj_radius_;
+    res.command.center_x = circle_trj_center_x_;
+    res.command.center_y = circle_trj_center_y_;
+
+    return true;
+  }
+
+  void HybridImpedanceController::eval_current_point_to_point_traj(const ros::Duration& period)
+  {
+    // this function is called inside the update() method
+    // when this function is called the vector ws_x_ surely contains
+    // the current state and eval_point_to_point_traj_constants()
+    // can be called
+    eval_point_to_point_traj_constants();
+
+    time_ += period.toSec();
+    
+    if (time_ > p2p_traj_duration_)
+      time_ = p2p_traj_duration_;
+
+    for (int i=0; i<2; i++)
+      {
+	x_des_(i) = p2p_trj_const_(0, i) + p2p_trj_const_(1, i) * pow(time_, 3) + \
+	  p2p_trj_const_(2, i) * pow(time_, 4) + p2p_trj_const_(3, i) * pow(time_, 5);
+
+	xdot_des_(i) = 3 * p2p_trj_const_(1, i) * pow(time_, 2) + \
+	  4 * p2p_trj_const_(2, i) * pow(time_, 3) + 5 * p2p_trj_const_(3, i) * pow(time_, 4);
+
+	xdotdot_des_(i) = 3 * 2 *  p2p_trj_const_(1, i) * time_ + \
+	  4 * 3 * p2p_trj_const_(2, i) * pow(time_, 2) + 5 * 4 * p2p_trj_const_(3, i) * pow(time_, 3);
+      }
+
+  }
+
+  void HybridImpedanceController::eval_point_to_point_traj_constants()
+  { 
+    if (is_first_iteration_p2p_traj_)
+      {
+	// evaluate common part of constants
+	double constant_0, constant_1, constant_2;
+	constant_0 = P2P_COEFF_3 / pow(p2p_traj_duration_, 3);
+	constant_1 = P2P_COEFF_4 / pow(p2p_traj_duration_, 4);
+	constant_2 = P2P_COEFF_5 / pow(p2p_traj_duration_, 5);
+
+	// evaluate constants for x and y trajectories
+	for (int i=0; i<2; i++)
+	  {
+	    double error = x_des_final_(i) - ws_x_(i);
+	    p2p_trj_const_(0, i) = ws_x_(i);
+	    p2p_trj_const_(1, i) = error * constant_0;
+	    p2p_trj_const_(2, i) = error * constant_1;
+	    p2p_trj_const_(3, i) = error * constant_2;
+	  }
+	is_first_iteration_p2p_traj_ = false;
+      }
+  }
+
+  void HybridImpedanceController::eval_current_circular_traj(const ros::Duration& period)
   {
     // evaluate the circular trajectory
     time_ = time_ + period.toSec();
@@ -263,37 +378,6 @@ namespace lwr_controllers {
     // set the acceleration
     xdotdot_des_(0) = ddx_trj;
     xdotdot_des_(1) = ddy_trj;
-  }
-
-  bool HybridImpedanceController::get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
-					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
-  {
-    // get gains
-    res.command.kp = Kp_(0, 0);
-    res.command.kd = Kd_(0, 0);
-    res.command.km_f = km_f_;
-    res.command.kd_f = kd_f_;
-
-    // get position
-    res.command.x = x_des_(0);
-    res.command.y = x_des_(1);
-
-    // get attitude
-    res.command.yaw = x_des_(3);
-    res.command.pitch = x_des_(4);
-    res.command.roll = x_des_(5);
-    
-    // get force
-    res.command.forcez = fz_des_;
-
-    // get circle trajectory
-    res.command.circle_trj = circle_trj_;
-    res.command.frequency = circle_trj_frequency_;
-    res.command.radius = circle_trj_radius_;
-    res.command.center_x = circle_trj_center_x_;
-    res.command.center_y = circle_trj_center_y_;
-
-    return true;
   }
 
   void HybridImpedanceController::publish_data(ros::Publisher& pub, KDL::Wrench wrench)

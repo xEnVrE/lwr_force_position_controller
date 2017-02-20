@@ -8,6 +8,7 @@ float64 kd_f
 # desired position
 float64 x
 float64 y
+float64 p2p_traj_duration
 # desired YPR (aka ZYX)
 float64 yaw
 float64 pitch
