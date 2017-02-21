@@ -98,8 +98,6 @@ namespace lwr_controllers {
 				 &CartesianPositionController::ft_sensor_callback, this);
       }
 	
-    use_inverse_dynamics_controller_ = true;
-
     return true;
   }
 
@@ -135,37 +133,23 @@ namespace lwr_controllers {
     q_error.resize(kdl_chain_.getNrOfJoints());
     qdot_error.resize(kdl_chain_.getNrOfJoints());
 
-    if(use_inverse_dynamics_controller_)
+    evaluate_traj_des(period);
+    for(size_t i=0; i<joint_handles_.size(); i++)
       {
-	evaluate_traj_des(period);
-	for(size_t i=0; i<joint_handles_.size(); i++)
-	  {
-	    q_error(i) = traj_des_.q(i) - joint_msr_states_.q(i);
-	    qdot_error(i) = traj_des_.qdot(i) - joint_msr_states_.qdot(i);
-	    tau_cmd(i) = kp_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
-	  }
+	q_error(i) = traj_des_.q(i) - joint_msr_states_.q(i);
+	qdot_error(i) = traj_des_.qdot(i) - joint_msr_states_.qdot(i);
+	tau_cmd(i) = kp_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
       }
-    else
-      {
-	for(size_t i=0; i<joint_handles_.size(); i++)
-	  {
-	    q_error(i) = traj_des_.q(i) - joint_msr_states_.q(i);
-	    tau_cmd(i) = kp_ * q_error(i) - kd_ * joint_msr_states_.qdot(i);
-	  }
-      }
-
+    
     // ONLY for inverse dynamics strategy
     KDL::JntSpaceInertiaMatrix B;
     KDL::JntArray C;
     B.resize(kdl_chain_.getNrOfJoints());
     C.resize(kdl_chain_.getNrOfJoints());
-    if(use_inverse_dynamics_controller_)
-      {
-	// evaluate inertia matrix and coriolis effort required to invert the dynamics
-	dyn_param_solver_->JntToMass(joint_msr_states_.q, B);
-	dyn_param_solver_->JntToCoriolis(joint_msr_states_.q, joint_msr_states_.qdot, C);
-      }
-    
+    // evaluate inertia matrix and coriolis effort required to invert the dynamics
+    dyn_param_solver_->JntToMass(joint_msr_states_.q, B);
+    dyn_param_solver_->JntToCoriolis(joint_msr_states_.q, joint_msr_states_.qdot, C);
+        
     KDL::Jacobian J_;
     Eigen::Matrix<double, 6,1> base_F_wrist_;
     if (use_simulation_)
@@ -194,80 +178,58 @@ namespace lwr_controllers {
 	///////////////////////////////////////////////////////////////////////////////
       }
 
-    // ONLY for inverse dynamics strategy
-    if(use_inverse_dynamics_controller_)
-      {
-	// robust control
-	// w = rho * versor(z)
-	// where z = D' * Q * eta
-	// - D = [0; eye(7)]
-	// - Q: positive define matrix
-	// - eta = [q_error; qdot_error]
-	Eigen::VectorXd eta, z, w;
-	Eigen::MatrixXd D, Q;
-	double rho = 100;
-
-	eta = Eigen::VectorXd::Zero(2 * kdl_chain_.getNrOfJoints());
-	eta.head(kdl_chain_.getNrOfJoints()) = q_error.data;
-	eta.tail(kdl_chain_.getNrOfJoints()) = qdot_error.data;
-
-	Q = Eigen::MatrixXd::Identity(2 * kdl_chain_.getNrOfJoints(), 2 * kdl_chain_.getNrOfJoints());
-	D = Eigen::MatrixXd::Zero(2 * kdl_chain_.getNrOfJoints(), kdl_chain_.getNrOfJoints());
-	D.block<7, 7>(7,0) =  Eigen::MatrixXd::Identity(kdl_chain_.getNrOfJoints(), kdl_chain_.getNrOfJoints());
-
-	z = D.transpose() * Q * eta;
-
-	// avoid chattering
-	if (z.norm() > 0.001)
-	  w = rho * z / z.norm();
-	else
-	  w = rho * z / 0.001;
-
-	// evaluate B * tau_cmd
-	KDL::JntArray B_tau_cmd;
-	B_tau_cmd.resize(kdl_chain_.getNrOfJoints());
-	if (use_simulation_)
-	  // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
-	  B_tau_cmd.data = B.data * (tau_cmd.data + w) + C.data + J_.data.transpose() * base_F_wrist_;
-	else
-	  B_tau_cmd.data = B.data * (tau_cmd.data + w) + C.data;
-
-	// set joint efforts
-	for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
-	  {
-	    joint_handles_[i].setCommand(B_tau_cmd(i));
-	    
-	    // required to exploit the JOINT IMPEDANCE MODE of the kuka manipulator
-	    joint_stiffness_handles_[i].setCommand(0);
-	    joint_damping_handles_[i].setCommand(0);
-	    joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
-	  }
-      }
-
-    // ONLY for PD strategy
+    // robust control
+    // w = rho * versor(z)
+    // where z = D' * Q * eta
+    // - D = [0; eye(7)]
+    // - Q: positive define matrix
+    // - eta = [q_error; qdot_error]
+    
+    // Eigen::VectorXd eta, z, w;
+    // Eigen::MatrixXd D, Q;
+    // double rho = 100;
+    
+    // eta = Eigen::VectorXd::Zero(2 * kdl_chain_.getNrOfJoints());
+    // eta.head(kdl_chain_.getNrOfJoints()) = q_error.data;
+    // eta.tail(kdl_chain_.getNrOfJoints()) = qdot_error.data;
+    
+    // Q = Eigen::MatrixXd::Identity(2 * kdl_chain_.getNrOfJoints(), 2 * kdl_chain_.getNrOfJoints());
+    // D = Eigen::MatrixXd::Zero(2 * kdl_chain_.getNrOfJoints(), kdl_chain_.getNrOfJoints());
+    // D.block<7, 7>(7,0) =  Eigen::MatrixXd::Identity(kdl_chain_.getNrOfJoints(), kdl_chain_.getNrOfJoints());
+    
+    // z = D.transpose() * Q * eta;
+    
+    // // avoid chattering
+    // if (z.norm() > 0.001)
+    //   w = rho * z / z.norm();
+    // else
+    //   w = rho * z / 0.001;
+    
+    // evaluate B * tau_cmd
+    KDL::JntArray B_tau_cmd;
+    B_tau_cmd.resize(kdl_chain_.getNrOfJoints());
+    if (use_simulation_)
+      // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
+      B_tau_cmd.data = B.data * tau_cmd.data + C.data + J_.data.transpose() * base_F_wrist_;
     else
+      B_tau_cmd.data = B.data * tau_cmd.data + C.data;
+    
+    // set joint efforts
+    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
       {
-	if (use_simulation_)
-	  // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
-	  tau_cmd.data = tau_cmd.data + J_.data.transpose() * base_F_wrist_;
-
-	// set joint efforts
-	for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
-	  {
-	    joint_handles_[i].setCommand(tau_cmd(i));
-	    
-	    // required to exploit the JOINT IMPEDANCE MODE of the kuka manipulator
-	    joint_stiffness_handles_[i].setCommand(0);
-	    joint_damping_handles_[i].setCommand(0);
-	    joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
-	  }
+	joint_handles_[i].setCommand(B_tau_cmd(i));
+	
+	// required to exploit the JOINT IMPEDANCE MODE of the kuka manipulator
+	joint_stiffness_handles_[i].setCommand(0);
+	joint_damping_handles_[i].setCommand(0);
+	joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
       }
-
+ 
     if(time > last_publish_time_ + ros::Duration(1.0 / publish_rate_))
       {
 	//update next tick
 	last_publish_time_ += ros::Duration(1.0 / publish_rate_);
-
+	
 	// publish data
 	publish_data(pub_error_, q_error);
       }
@@ -315,9 +277,6 @@ namespace lwr_controllers {
     if (req.command.kd != -1)
       kd_ = req.command.kd;
 
-    // set desired controller strategy
-    use_inverse_dynamics_controller_ =  req.command.use_inverse_dynamics_controller;
-
     bool hold_last_qdes_found = req.command.hold_last_qdes_found;
     if(hold_last_qdes_found == false)
       // evaluate the new desired configuration 
@@ -349,7 +308,6 @@ namespace lwr_controllers {
     res.command.kp = kp_;
     res.command.kd = kd_;
 
-    res.command.use_inverse_dynamics_controller = use_inverse_dynamics_controller_;
     return true;
   }
 
