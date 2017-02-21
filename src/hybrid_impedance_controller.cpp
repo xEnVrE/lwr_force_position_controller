@@ -165,7 +165,7 @@ namespace lwr_controllers {
 
     // force controlled DoF
     // ws_Fz
-    acc_cmd(2) = km_f_ * (-kd_f_ / km_f_ * ws_xdot_(2) + (fz_des_ - ws_F_ee.force.z()));
+    acc_cmd(2) = - kd_f_ * ws_xdot_(2) + km_f_ * (fz_des_ - ws_F_ee.force.z());
 
     //
     /////////////////////////////////////////////////////////////////////
