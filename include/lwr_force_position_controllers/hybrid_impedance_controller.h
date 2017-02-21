@@ -28,7 +28,9 @@ namespace lwr_controllers
     bool get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req, \
 		 lwr_force_position_controllers::HybridImpedanceCommand::Response &res);
     void get_parameters(ros::NodeHandle &n);
-    void set_circular_traj(const ros::Duration& period);
+    void eval_current_circular_traj(const ros::Duration& period);
+    void eval_current_point_to_point_traj(const ros::Duration& period);
+    void eval_point_to_point_traj_constants();
     void publish_data(ros::Publisher& pub, KDL::Wrench wrench);
     void publish_data(ros::Publisher& pub, Eigen::VectorXd& vector);
 
@@ -37,8 +39,11 @@ namespace lwr_controllers
     ros::ServiceServer get_cmd_service_;
     
     // hybrid impedance controller (pose)
-    Eigen::VectorXd x_des_, xdot_des_, xdotdot_des_;
-    Eigen::MatrixXd Kp_, Kd_;    
+    Eigen::VectorXd x_des_, x_des_final_, xdot_des_, xdotdot_des_;
+    Eigen::MatrixXd Kp_, Kd_;
+    double p2p_traj_duration_;
+    bool is_first_iteration_p2p_traj_;
+    Eigen::MatrixXf p2p_trj_const_;
 
     // hybrid impedance controller (force)
     double fz_des_;
