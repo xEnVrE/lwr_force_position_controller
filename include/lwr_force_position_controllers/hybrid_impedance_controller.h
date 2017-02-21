@@ -31,6 +31,8 @@ namespace lwr_controllers
     void eval_current_circular_traj(const ros::Duration& period);
     void eval_current_point_to_point_traj(const ros::Duration& period);
     void eval_point_to_point_traj_constants();
+    void evaluate_force_reference_constants(double force_des);
+    void eval_force_reference(const ros::Duration& period);
     void publish_data(ros::Publisher& pub, KDL::Wrench wrench);
     void publish_data(ros::Publisher& pub, Eigen::VectorXd& vector);
 
@@ -46,8 +48,11 @@ namespace lwr_controllers
     Eigen::MatrixXf p2p_trj_const_;
 
     // hybrid impedance controller (force)
-    double fz_des_;
+    double fz_des_, fz_des_final_;
     double km_f_, kd_f_;
+    double force_ref_duration_;
+    Eigen::VectorXf force_ref_const_;
+    double time_force_;
 
     // circle trajectory
     bool circle_trj_;

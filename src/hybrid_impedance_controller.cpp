@@ -15,6 +15,8 @@
 #define P2P_COEFF_3 10.0
 #define P2P_COEFF_4 -15.0
 #define P2P_COEFF_5 6.0
+#define FORCE_REF_COEFF_3 -2
+#define FORCE_REF_COEFF_2 3
 
 namespace lwr_controllers {
 
@@ -60,6 +62,10 @@ namespace lwr_controllers {
     p2p_traj_duration_ = 5.0;
     is_first_iteration_p2p_traj_ = true;
 
+    // of the point to point trajectory
+    force_ref_const_ = Eigen::VectorXf(3);
+    //
+    force_ref_duration_ = 5.0;
 
     /////////////////////////////////////////////////
     // evaluate default trajectory
@@ -85,9 +91,11 @@ namespace lwr_controllers {
     circle_trj_center_y_ = DEFAULT_CIRCLE_CENTER_Y;
     time_ = 0;
 
-    // force set point
-    fz_des_ = 0;
-
+    // init force reference coefficent the initial time and desired force
+    fz_des_final_ = 0;
+    for(int i = 0; i<3; i++)
+      force_ref_const_(i)  = 0;
+    time_force_ = 0;
     //
     ////////////////////////////////////////////////
 
@@ -127,6 +135,9 @@ namespace lwr_controllers {
     
     // transform the ft_sensor wrench 
     // move the reference point from the wrist to the tool tip and project in workspace basis
+
+    eval_force_reference(period);
+
     KDL::Frame force_transformation(R_ws_base_, R_ws_ee_ * (-p_wrist_ee_));
     KDL::Wrench ws_F_ee;
     ws_F_ee = force_transformation * base_wrench_wrist_;
@@ -248,8 +259,10 @@ namespace lwr_controllers {
     xdotdot_des_(1) = 0;
     
     // set the desired force
-    fz_des_ = req.command.forcez;
-    
+    evaluate_force_reference_constants(req.command.forcez);
+    time_force_ = 0;    
+    fz_des_final_ = req.command.forcez;
+
     // set desired parameters of the circular trajectory
     circle_trj_ = req.command.circle_trj;
     circle_trj_frequency_ = req.command.frequency;
@@ -291,7 +304,7 @@ namespace lwr_controllers {
     res.command.roll = x_des_(5);
     
     // get force
-    res.command.forcez = fz_des_;
+    res.command.forcez = fz_des_final_;
 
     // get circle trajectory
     res.command.circle_trj = circle_trj_;
@@ -301,6 +314,26 @@ namespace lwr_controllers {
     res.command.center_y = circle_trj_center_y_;
 
     return true;
+  }
+
+  void HybridImpedanceController::evaluate_force_reference_constants(double force_des)
+  {
+    force_ref_const_(0) = fz_des_final_;
+    force_ref_const_(1) = FORCE_REF_COEFF_2 * (force_des - fz_des_final_) / pow(force_ref_duration_, 2);
+    force_ref_const_(2) = FORCE_REF_COEFF_3 * (force_des - fz_des_final_) / pow(force_ref_duration_, 3);
+    
+  }
+
+  void HybridImpedanceController::eval_force_reference(const ros::Duration& period)
+  {
+    time_force_ += period.toSec();
+    if(time_force_ >= force_ref_duration_)
+      time_force_ = force_ref_duration_;
+
+    // q_des
+    fz_des_ = force_ref_const_(2) * pow(time_force_, 3) + \
+      force_ref_const_(1) * pow(time_force_, 2) + \
+      force_ref_const_(0);
   }
 
   void HybridImpedanceController::eval_current_point_to_point_traj(const ros::Duration& period)
