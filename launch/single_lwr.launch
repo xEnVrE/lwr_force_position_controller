@@ -94,8 +94,7 @@
 	<group ns="lwr">
 		<group if="$(arg lwr_powered)">
 			<!--add a copy of the robot description within the name space -->
-			<param name="robot_description" command="$(find xacro)/xacro.py $(find single_lwr_robot)/robot/$(arg robot_name).urdf.xacro"/>
-
+		        <param name="robot_description" command="$(find xacro)/xacro --inorder $(find lwr_force_position_controllers)/robot/vito.urdf.xacro"/> 
 			<include file="$(find lwr_hw)/launch/lwr_hw.launch">
 				<arg name="port" value="$(arg port)"/>
 				<arg name="ip" value="$(arg ip)"/>
