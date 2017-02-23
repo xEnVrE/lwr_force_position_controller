@@ -12,6 +12,9 @@
 #include <kdl/chainfksolverpos_recursive.hpp>
 #include <kdljacdot/chainjnttojacdotsolver.hpp>
 
+#include <lwr_force_position_controllers/CartesianInverseCommand.h>
+#include <lwr_force_position_controllers/CartesianInverseCommandMsg.h>
+
 namespace lwr_controllers
 {
   class CartesianInverseDynamicsController: public controller_interface::KinematicChainControllerBase<hardware_interface::EffortJointInterface>
@@ -34,6 +37,10 @@ namespace lwr_controllers
   private:
     void force_torque_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void update_fri_inertia_matrix(Eigen::MatrixXd& fri_B);
+    bool set_cmd(lwr_force_position_controllers::CartesianInverseCommand::Request &req, \
+		 lwr_force_position_controllers::CartesianInverseCommand::Response &res);
+    bool get_cmd(lwr_force_position_controllers::CartesianInverseCommand::Request &req, \
+		 lwr_force_position_controllers::CartesianInverseCommand::Response &res);
 
     // syntax:
     //
@@ -72,6 +79,10 @@ namespace lwr_controllers
     // these matrices are sparse and initialized in init()
     Eigen::MatrixXd ws_TA_, ws_TA_dot_;
 
+    // null space controller gains
+    Eigen::Matrix<double, 3, 3> Kp_im_;
+    Eigen::Matrix<double, 3, 3> Kd_im_;
+
     // commands
     Eigen::VectorXd tau_fri_;
     Eigen::MatrixXd command_filter_;
@@ -83,6 +94,9 @@ namespace lwr_controllers
     // use simulation flag
     bool use_simulation_;
 
+    // CartesianInverseCommand service
+    ros::ServiceServer set_cmd_service_;
+    ros::ServiceServer get_cmd_service_;
   };
 
 } // namespace

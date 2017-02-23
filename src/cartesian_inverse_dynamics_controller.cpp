@@ -6,6 +6,8 @@
 #include <Eigen/LU>
 #include <lwr_force_position_controllers/cartesian_inverse_dynamics_controller.h>
 
+#define DEFAULT_KP_IM 30
+#define DEFAULT_KD_IM 30
 // syntax:
 //
 // for jacobians x_J_y := Jacobian w.r.t reference point y expressed in basis x
@@ -30,6 +32,12 @@ namespace lwr_controllers {
     // get use_simulation parameter from rosparam server
     ros::NodeHandle nh;
     nh.getParam("use_simulation", use_simulation_);
+
+    // advertise CartesianInverseCommand service
+    set_cmd_service_ = n.advertiseService("set_cartesian_inverse_command",\
+					  &CartesianInverseDynamicsController::set_cmd, this);
+    get_cmd_service_ = n.advertiseService("get_cartesian_inverse_command",\
+					  &CartesianInverseDynamicsController::get_cmd, this);
 
     // extend the default chain with a fake segment in order to evaluate
     // Jacobians, derivatives of jacobians and forward kinematics with respect to a given reference point
@@ -70,6 +78,13 @@ namespace lwr_controllers {
     ws_TA_ = Eigen::MatrixXd::Zero(6,6);
     ws_TA_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity();
     ws_TA_dot_ = Eigen::MatrixXd::Zero(6,6);
+
+    // set default controller gains
+    Kp_im_ = Eigen::Matrix<double, 3, 3>::Zero(); 
+    Kd_im_ = Eigen::Matrix<double, 3, 3>::Identity() * DEFAULT_KD_IM;
+    // set proportional action in the z direction only
+    Kp_im_(2,2) = DEFAULT_KP_IM;
+
 
     // subscribe to force/torque sensor topic
     sub_force_ = n.subscribe("/lwr/ft_sensor_controller/ft_sensor_nog", 1,\
@@ -340,12 +355,6 @@ namespace lwr_controllers {
     Eigen::MatrixXd ns_filter = Eigen::Matrix<double, 7, 7>::Identity() - \
       base_J_wrist.data.transpose() * gen_inv.transpose();
 
-    // controller gains
-    Eigen::Matrix<double, 3, 3> Kp_im = Eigen::Matrix<double, 3, 3>::Zero(); 
-    Eigen::Matrix<double, 3, 3> Kd_im = Eigen::Matrix<double, 3, 3>::Identity() * 30;
-    // set proportional action in the z direction only
-    Kp_im(2,2) = 30;
-
     // state and derivative of the state
     Eigen::Matrix<double, 3, 1> im_link_state;
     Eigen::VectorXd im_link_state_dot;
@@ -364,7 +373,7 @@ namespace lwr_controllers {
 
     // filter and add the command to TAU_FRI
     tau_fri_ += ns_filter * base_J_im_linear.transpose() * \
-      (Kp_im * (im_link_des_state - im_link_state) - Kd_im * im_link_state_dot);
+      (Kp_im_ * (im_link_des_state - im_link_state) - Kd_im_ * im_link_state_dot);
 
     //
     //////////////////////////////////////////////////////////////////////////////////
@@ -416,6 +425,31 @@ namespace lwr_controllers {
     // reverse the measured force so that wrench_wrist represents 
     // the force applied on the environment by the end-effector
     wrench_wrist_ = - wrench_wrist_topic;
+  }
+
+  bool CartesianInverseDynamicsController::set_cmd(lwr_force_position_controllers::CartesianInverseCommand::Request &req,\
+						   lwr_force_position_controllers::CartesianInverseCommand::Response &res)
+  {
+    // set gains
+    if (req.command.kp_im != -1)
+      {
+	Kp_im_ = Eigen::Matrix<double, 3, 3>::Zero();
+	Kp_im_(2,2) = req.command.kp_im;
+      }
+    if (req.command.kd_im != -1)
+      Kd_im_ = Eigen::Matrix<double, 3, 3>::Identity() * req.command.kd_im;
+
+    return true;
+  }
+
+  bool CartesianInverseDynamicsController::get_cmd(lwr_force_position_controllers::CartesianInverseCommand::Request &req,\
+						   lwr_force_position_controllers::CartesianInverseCommand::Response &res)
+  {
+    // get gains
+    res.command.kp_im = Kp_im_(2, 2);
+    res.command.kd_im = Kd_im_(0, 0);
+    
+    return true;
   }
 
   void CartesianInverseDynamicsController::set_p_wrist_ee(double x, double y, double z)

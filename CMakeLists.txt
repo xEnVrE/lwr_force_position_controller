@@ -22,6 +22,7 @@ include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 add_message_files(
    FILES
    CartesianPositionCommandMsg.msg
+   CartesianInverseCommandMsg.msg
    HybridImpedanceCommandMsg.msg
    FtSensorToolEstimationMsg.msg
    CartesianPositionErrorMsg.msg
@@ -30,6 +31,7 @@ add_message_files(
 add_service_files(
   FILES
   CartesianPositionCommand.srv
+  CartesianInverseCommand.srv
   HybridImpedanceCommand.srv
   FtSensorToolEstimation.srv
   FtSensorSetBias.srv
