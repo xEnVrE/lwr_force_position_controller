@@ -107,6 +107,7 @@ namespace lwr_controllers {
     pub_x_des_ = n.advertise<geometry_msgs::WrenchStamped>("x_des", 1000);
     pub_xdot_des_ = n.advertise<geometry_msgs::WrenchStamped>("xdot_des", 1000);
     pub_xdotdot_des_ = n.advertise<geometry_msgs::WrenchStamped>("xdotdot_des", 1000);
+    pub_error_ = n.advertise<geometry_msgs::WrenchStamped>("error", 1000);
 
     return true;
   }
@@ -176,7 +177,8 @@ namespace lwr_controllers {
 
     // force controlled DoF
     // ws_Fz
-    acc_cmd(2) = - kd_f_ * ws_xdot_(2) + km_f_ * (fz_des_ - ws_F_ee.force.z());
+    double err_force = fz_des_ - ws_F_ee.force.z();
+    acc_cmd(2) = - kd_f_ * ws_xdot_(2) + km_f_ * err_force;
 
     //
     /////////////////////////////////////////////////////////////////////
@@ -198,6 +200,10 @@ namespace lwr_controllers {
 	publish_data(pub_force_, ws_F_ee);
 	publish_data(pub_force_des_, KDL::Wrench(KDL::Vector(0, 0, fz_des_),\
 						 KDL::Vector(0, 0, 0)));
+	Eigen::VectorXd errors;
+	errors = err_x;
+	errors(2) = err_force;
+	publish_data(pub_error_, errors);
       }
   }
 
