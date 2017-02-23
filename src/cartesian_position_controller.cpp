@@ -136,7 +136,6 @@ namespace lwr_controllers {
 
     Eigen::MatrixXd fri_B (joint_handles_.size(), joint_handles_.size());
     update_fri_inertia_matrix(fri_B);
-    std::cout << fri_B << std::endl << std::endl;
   
     // compute control law
     KDL::JntArray tau_cmd;
@@ -223,7 +222,7 @@ namespace lwr_controllers {
       // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
       B_tau_cmd.data = B.data * tau_cmd.data + C.data + J_.data.transpose() * base_F_wrist_;
     else
-      B_tau_cmd.data = B.data * tau_cmd.data + C.data;
+      B_tau_cmd.data = fri_B * tau_cmd.data;
     
     // set joint efforts
     for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
