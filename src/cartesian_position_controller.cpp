@@ -117,6 +117,14 @@ namespace lwr_controllers {
     last_publish_time_ = time;
   }
 
+  void CartesianPositionController::update_fri_inertia_matrix(Eigen::MatrixXd& fri_B)
+  {
+    int n_joints = kdl_chain_.getNrOfJoints();
+    for(int i = 0; i < n_joints; i++)
+      for(int j = 0; j < n_joints; j++)
+	fri_B(i,j) = inertia_matrix_handles_[i * n_joints + j].getPosition();
+  }
+
   void CartesianPositionController::update(const ros::Time& time, const ros::Duration& period)
   {
     // get current configuration (position and velocity)
@@ -125,6 +133,10 @@ namespace lwr_controllers {
 	joint_msr_states_.q(i) = joint_handles_[i].getPosition();
 	joint_msr_states_.qdot(i) = joint_handles_[i].getVelocity();
       }
+
+    Eigen::MatrixXd fri_B (joint_handles_.size(), joint_handles_.size());
+    update_fri_inertia_matrix(fri_B);
+    std::cout << fri_B << std::endl << std::endl;
   
     // compute control law
     KDL::JntArray tau_cmd;
@@ -141,7 +153,6 @@ namespace lwr_controllers {
 	tau_cmd(i) = kp_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
       }
     
-    // ONLY for inverse dynamics strategy
     KDL::JntSpaceInertiaMatrix B;
     KDL::JntArray C;
     B.resize(kdl_chain_.getNrOfJoints());

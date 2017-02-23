@@ -40,7 +40,8 @@ namespace lwr_controllers
 		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
     void publish_data(ros::Publisher& pub, KDL::JntArray& array);
     void print_joint_array(KDL::JntArray& array);
-
+    void update_fri_inertia_matrix(Eigen::MatrixXd& fri_B);
+    
     // joint position controller
     double kp_, kd_;
    
