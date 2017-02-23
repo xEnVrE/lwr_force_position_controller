@@ -27,6 +27,10 @@ namespace lwr_controllers {
   {
     KinematicChainControllerBase<hardware_interface::EffortJointInterface>::init(robot, n);
 
+    // get use_simulation parameter from rosparam server
+    ros::NodeHandle nh;
+    nh.getParam("use_simulation", use_simulation_);
+
     // extend the default chain with a fake segment in order to evaluate
     // Jacobians, derivatives of jacobians and forward kinematics with respect to a given reference point
     // (typicallly the tool tip)
@@ -68,13 +72,21 @@ namespace lwr_controllers {
     ws_TA_dot_ = Eigen::MatrixXd::Zero(6,6);
 
     // subscribe to force/torque sensor topic
-    sub_force_ = n.subscribe("/lwr/ft_sensor_controller/ft_sensor_nog"\
-			     , 1, &CartesianInverseDynamicsController::force_torque_callback, this);
+    sub_force_ = n.subscribe("/lwr/ft_sensor_controller/ft_sensor_nog", 1,\
+			     &CartesianInverseDynamicsController::force_torque_callback, this);
 
     return true;
   }
 
   void CartesianInverseDynamicsController::starting(const ros::Time& time) {}
+
+  void CartesianInverseDynamicsController::update_fri_inertia_matrix(Eigen::MatrixXd& fri_B)
+  {
+    int n_joints = kdl_chain_.getNrOfJoints();
+    for(int i = 0; i < n_joints; i++)
+      for(int j = 0; j < n_joints; j++)
+	fri_B(i,j) = inertia_matrix_handles_[i * n_joints + j].getPosition();
+  }
 
   void CartesianInverseDynamicsController::update(const ros::Time& time, const ros::Duration& period)
   {
@@ -91,7 +103,11 @@ namespace lwr_controllers {
 	joint_msr_states_.q(i) = joint_handles_[i].getPosition();
 	joint_msr_states_.qdot(i) = joint_handles_[i].getVelocity();
       }
-    
+
+    // get inertia matrix from FRI
+    Eigen::MatrixXd fri_B (joint_handles_.size(), joint_handles_.size());
+    update_fri_inertia_matrix(fri_B);
+ 
     // get the current configuration of the internal motion controlled link
     KDL::JntArray q_im;
     q_im.resize(im_chain_.getNrOfJoints());
@@ -213,7 +229,11 @@ namespace lwr_controllers {
 
     // BA = inv(ws_JA_ee * B_inv * base_J_wrist')
     Eigen::MatrixXd BA;
-    BA = ws_JA_ee * B.data.inverse() * base_J_wrist.data.transpose();
+    if(use_simulation_)
+      BA = ws_JA_ee * B.data.inverse() * base_J_wrist.data.transpose();
+    else
+      BA = ws_JA_ee * fri_B.inverse() * base_J_wrist.data.transpose();
+
     BA = BA.inverse();
 
     //
@@ -285,10 +305,15 @@ namespace lwr_controllers {
     //////////////////////////////////////////////////////////////////////////////////
     //
 
-    tau_fri_ = C.data + base_J_wrist.data.transpose() *\
-      (base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
-    command_filter_ = base_J_wrist.data.transpose() * BA;
+    if(use_simulation_)
+      tau_fri_ = C.data + base_J_wrist.data.transpose() * \
+	(base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
+    else
+      tau_fri_ = base_J_wrist.data.transpose() * \
+	(base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
 
+    command_filter_ = base_J_wrist.data.transpose() * BA;
+    
     //
     //////////////////////////////////////////////////////////////////////////////////
 
@@ -304,11 +329,15 @@ namespace lwr_controllers {
 
     // evaluate a dynamically consistent generalized inverse
     Eigen::MatrixXd gen_inv;
-    gen_inv = B.data.inverse() * base_J_wrist.data.transpose() *\
-      (base_J_wrist.data * B.data.inverse() * base_J_wrist.data.transpose()).inverse();
+    if(use_simulation_)
+      gen_inv = B.data.inverse() * base_J_wrist.data.transpose() * \
+	(base_J_wrist.data * B.data.inverse() * base_J_wrist.data.transpose()).inverse();
+    else
+      gen_inv = fri_B.inverse() * base_J_wrist.data.transpose() * \
+	(base_J_wrist.data * fri_B.inverse() * base_J_wrist.data.transpose()).inverse();
 
     // evaluate the null space filter
-    Eigen::MatrixXd ns_filter = Eigen::Matrix<double, 7, 7>::Identity() -\
+    Eigen::MatrixXd ns_filter = Eigen::Matrix<double, 7, 7>::Identity() - \
       base_J_wrist.data.transpose() * gen_inv.transpose();
 
     // controller gains

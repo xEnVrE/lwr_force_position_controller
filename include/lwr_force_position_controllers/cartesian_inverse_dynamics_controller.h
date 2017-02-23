@@ -33,6 +33,7 @@ namespace lwr_controllers
 
   private:
     void force_torque_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
+    void update_fri_inertia_matrix(Eigen::MatrixXd& fri_B);
 
     // syntax:
     //
@@ -78,6 +79,10 @@ namespace lwr_controllers
     // ft sensor subscriber and related wrench
     ros::Subscriber sub_force_;
     KDL::Wrench wrench_wrist_;
+
+    // use simulation flag
+    bool use_simulation_;
+
   };
 
 } // namespace
