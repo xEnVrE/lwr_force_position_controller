@@ -11,7 +11,7 @@
 
 #include <lwr_force_position_controllers/cartesian_position_controller.h>
 
-#include <lwr_force_position_controllers/CartesianPositionErrorMsg.h>
+#include <lwr_force_position_controllers/CartesianPositionJointsMsg.h>
 
 //-------------------------------------
 // GAIN CONSTANTS
@@ -87,7 +87,7 @@ namespace lwr_controllers {
 					  &CartesianPositionController::get_cmd, this); 
 
     // advertise topics
-    pub_error_ = n.advertise<lwr_force_position_controllers::CartesianPositionErrorMsg>("error", 1000);
+    pub_error_ = n.advertise<lwr_force_position_controllers::CartesianPositionJointsMsg>("error", 1000);
 
     if(use_simulation_)
       {
@@ -247,10 +247,15 @@ namespace lwr_controllers {
 
   void CartesianPositionController::publish_data(ros::Publisher& pub, KDL::JntArray& array)
   {
-    lwr_force_position_controllers::CartesianPositionErrorMsg msg;
+    lwr_force_position_controllers::CartesianPositionJointsMsg msg;
     msg.header.stamp = ros::Time::now();
-    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
-      msg.q_error.push_back(array(i));
+    msg.a1 = array(1);
+    msg.a2 = array(2);
+    msg.e1 = array(3);
+    msg.a3 = array(4);
+    msg.a4 = array(5);
+    msg.a5 = array(6);
+    msg.a6 = array(7);
     pub.publish(msg);
   }
   

@@ -13,11 +13,9 @@ find_package(catkin REQUIRED COMPONENTS
   kdljacdot
 )
 
-
 add_definitions (-fpermissive -std=c++11)
 
 include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
-
 
 add_message_files(
    FILES
@@ -25,7 +23,7 @@ add_message_files(
    CartesianInverseCommandMsg.msg
    HybridImpedanceCommandMsg.msg
    FtSensorToolEstimationMsg.msg
-   CartesianPositionErrorMsg.msg
+   CartesianPositionJointsMsg.msg
 )
 
 add_service_files(
