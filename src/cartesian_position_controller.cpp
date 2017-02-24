@@ -88,6 +88,7 @@ namespace lwr_controllers {
 
     // advertise topics
     pub_error_ = n.advertise<lwr_force_position_controllers::CartesianPositionJointsMsg>("error", 1000);
+    pub_q_des_ = n.advertise<lwr_force_position_controllers::CartesianPositionJointsMsg>("q_des", 1000);
 
     if(use_simulation_)
       {
@@ -242,6 +243,7 @@ namespace lwr_controllers {
 	
 	// publish data
 	publish_data(pub_error_, q_error);
+	publish_data(pub_q_des_, traj_des_.q);
       }
   }
 
@@ -249,13 +251,13 @@ namespace lwr_controllers {
   {
     lwr_force_position_controllers::CartesianPositionJointsMsg msg;
     msg.header.stamp = ros::Time::now();
-    msg.a1 = array(1);
-    msg.a2 = array(2);
-    msg.e1 = array(3);
-    msg.a3 = array(4);
-    msg.a4 = array(5);
-    msg.a5 = array(6);
-    msg.a6 = array(7);
+    msg.a1 = array(0);
+    msg.a2 = array(1);
+    msg.e1 = array(2);
+    msg.a3 = array(3);
+    msg.a4 = array(4);
+    msg.a5 = array(5);
+    msg.a6 = array(6);
     pub.publish(msg);
   }
   
