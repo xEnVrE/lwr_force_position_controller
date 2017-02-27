@@ -65,7 +65,7 @@ namespace lwr_controllers {
     // of the point to point trajectory
     force_ref_const_ = Eigen::VectorXf(3);
     //
-    force_ref_duration_ = 5.0;
+    force_ref_duration_ = 2.0;
 
     /////////////////////////////////////////////////
     // evaluate default trajectory
@@ -251,7 +251,7 @@ namespace lwr_controllers {
     // position
     x_des_final_(0) = req.command.x;
     x_des_final_(1) = req.command.y;
-    //p2p_traj_duration_ = req.command.p2p_traj_duration;
+    p2p_traj_duration_ = req.command.p2p_traj_duration;
 
     // attitude
     x_des_(3) = req.command.yaw;
@@ -265,9 +265,11 @@ namespace lwr_controllers {
     xdotdot_des_(1) = 0;
     
     // set the desired force
+    force_ref_duration_ = req.command.force_ref_duration;
     evaluate_force_reference_constants(req.command.forcez);
-    time_force_ = 0;    
+    time_force_ = 0;
     fz_des_final_ = req.command.forcez;
+
 
     // set desired parameters of the circular trajectory
     circle_trj_ = req.command.circle_trj;
@@ -311,6 +313,7 @@ namespace lwr_controllers {
     
     // get force
     res.command.forcez = fz_des_final_;
+    res.command.force_ref_duration = force_ref_duration_;
 
     // get circle trajectory
     res.command.circle_trj = circle_trj_;

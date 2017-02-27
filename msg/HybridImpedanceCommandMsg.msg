@@ -15,7 +15,8 @@ float64 pitch
 float64 roll
 # desired force
 float64 forcez
-#circle trajectory
+float64 force_ref_duration
+# circle trajectory
 bool circle_trj
 float64 frequency
 float64 radius
