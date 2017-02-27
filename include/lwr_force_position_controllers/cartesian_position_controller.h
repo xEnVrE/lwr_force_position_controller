@@ -63,6 +63,7 @@ namespace lwr_controllers
     KDL::JntArrayAcc traj_des_;
     KDL::JntArray traj_a0_, traj_a3_, traj_a4_, traj_a5_;
     double time_;
+    double p2p_traj_duration_;
 
     // force and torques
     ros::Subscriber sub_force_;

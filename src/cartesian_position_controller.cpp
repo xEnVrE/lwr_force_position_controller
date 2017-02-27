@@ -23,9 +23,9 @@
 //TRAJECTORY GENERATION CONSTANTS
 //------------------------------------------------------------------------------
 #define FINAL_TIME 5.0 
-#define TRAJ_5 6.0 / (FINAL_TIME * FINAL_TIME * FINAL_TIME * FINAL_TIME * FINAL_TIME) // 5-th coeff. of trajectory polynomial
-#define TRAJ_4 -15.0 / (FINAL_TIME * FINAL_TIME * FINAL_TIME * FINAL_TIME) // 4-th coeff. of trajectory polynomial
-#define TRAJ_3 10.0 / (FINAL_TIME * FINAL_TIME * FINAL_TIME)// 3-th coeff. of trajectory polynomial
+#define TRAJ_5 6.0   // 5-th coeff. of trajectory polynomial
+#define TRAJ_4 -15.0 // 4-th coeff. of trajectory polynomial
+#define TRAJ_3 10.0  // 3-th coeff. of trajectory polynomial
 
 namespace lwr_controllers {
 
@@ -71,6 +71,9 @@ namespace lwr_controllers {
     // set the default gains
     kp_ = DEFAULT_KP;
     kd_ = DEFAULT_KD;
+
+    // set default trajectory duration
+    p2p_traj_duration_ = FINAL_TIME;
 
     // resize desired trajectory
     traj_des_.resize(kdl_chain_.getNrOfJoints());
@@ -295,6 +298,10 @@ namespace lwr_controllers {
       kd_ = req.command.kd;
 
     bool hold_last_qdes_found = req.command.hold_last_qdes_found;
+
+    // set p2p_traj_duration
+    p2p_traj_duration_ = req.command.p2p_traj_duration;
+
     if(hold_last_qdes_found == false)
       // evaluate the new desired configuration 
       // if requested by the user
@@ -324,6 +331,9 @@ namespace lwr_controllers {
     // get desired gain
     res.command.kp = kp_;
     res.command.kd = kd_;
+
+    // get p2p_traj_duration
+    res.command.p2p_traj_duration = p2p_traj_duration_;
 
     return true;
   }
@@ -364,9 +374,9 @@ namespace lwr_controllers {
     for(int i=0; i<joint_handles_.size(); i++)
       {
 	traj_a0_(i) = joint_msr_states_.q(i);
-	traj_a3_(i) = TRAJ_3 * (q_des(i) - joint_msr_states_.q(i));
-	traj_a4_(i) = TRAJ_4 * (q_des(i) - joint_msr_states_.q(i));
-	traj_a5_(i) = TRAJ_5 * (q_des(i) - joint_msr_states_.q(i));
+	traj_a3_(i) = TRAJ_3 / pow(p2p_traj_duration_, 3) * (q_des(i) - joint_msr_states_.q(i));
+	traj_a4_(i) = TRAJ_4 / pow(p2p_traj_duration_, 4) * (q_des(i) - joint_msr_states_.q(i));
+	traj_a5_(i) = TRAJ_5 / pow(p2p_traj_duration_, 5) * (q_des(i) - joint_msr_states_.q(i));
       }
     time_ = 0;
     
@@ -376,8 +386,8 @@ namespace lwr_controllers {
   void CartesianPositionController::evaluate_traj_des(const ros::Duration& period)
   {
     time_ += period.toSec();
-    if(time_ >= FINAL_TIME)
-      time_ = FINAL_TIME;
+    if(time_ >= p2p_traj_duration_)
+      time_ = p2p_traj_duration_;
     
     for(int i=0; i<joint_handles_.size(); i++)
       {
