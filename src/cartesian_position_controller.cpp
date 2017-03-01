@@ -313,9 +313,16 @@ namespace lwr_controllers {
   bool CartesianPositionController::get_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request &req,\
 					    lwr_force_position_controllers::CartesianPositionCommand::Response &res)
   {
+
     KDL::Frame ee_fk_frame;
     double yaw, pitch, roll;
-    ee_fk_solver_->JntToCart(joint_msr_states_.q, ee_fk_frame);
+    KDL::JntArray q;
+
+    q.resize(kdl_chain_.getNrOfJoints());
+    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
+	q(i) = joint_handles_[i].getPosition();
+
+    ee_fk_solver_->JntToCart(q, ee_fk_frame);
     ee_fk_frame.M.GetEulerZYX(yaw, pitch, roll);
     
     // get desired position 
