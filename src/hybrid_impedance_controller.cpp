@@ -43,7 +43,7 @@ namespace lwr_controllers {
 					  &HybridImpedanceController::set_cmd, this);
     get_cmd_service_ = n.advertiseService("get_hybrid_impedance_command",\
 					  &HybridImpedanceController::get_cmd, this);
-    
+
     // instantiate variables
     Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KP;
     Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KD; 
@@ -120,11 +120,14 @@ namespace lwr_controllers {
     p2p_trj_const_(0, 3) = yaw;
     p2p_trj_const_(0, 4) = pitch;
     p2p_trj_const_(0, 5) = roll;
+    prev_pos_setpoint_ << p_ws_ee.x(), p_ws_ee.y(), 0.2;
+    prev_att_setpoint_ << yaw, pitch, roll;
 
     // set force trajectory constants
     for(int i = 0; i<3; i++)
       force_ref_const_(i)  = 0;
-    fz_des_final_ = 0;
+    force_ref_const_(0) = -0.1;
+    prev_fz_setpoint_ = -0.1;
 
     // reset the time
     time_ = 0;
@@ -255,13 +258,12 @@ namespace lwr_controllers {
     desired_attitude(1) = req.command.pitch;
     desired_attitude(2) = req.command.roll;
 
-    //!!!!
-    // set requested circular trajectory parameters
-    circle_trj_ = req.command.circle_trj;
-    circle_trj_frequency_ = req.command.frequency;
-    circle_trj_radius_ = req.command.radius;
-    circle_trj_center_x_ = req.command.center_x;
-    circle_trj_center_y_ = req.command.center_y;
+    // // set requested circular trajectory parameters
+    // circle_trj_ = req.command.circle_trj;
+    // circle_trj_frequency_ = req.command.frequency;
+    // circle_trj_radius_ = req.command.radius;
+    // circle_trj_center_x_ = req.command.center_x;
+    // circle_trj_center_y_ = req.command.center_y;
 
     // set the desired gains requested by the user
     // TEMPORARY: -1 means that the user requested the last gain set
@@ -277,10 +279,10 @@ namespace lwr_controllers {
     ///////////////////////////////
     p2p_traj_mutex_.lock();
 
-    time_ = 0;
     p2p_traj_duration_ = req.command.p2p_traj_duration;
     eval_point_to_point_traj_constants(desired_position, desired_attitude,\
 				       p2p_traj_duration_);
+    time_ = 0;
 
     p2p_traj_mutex_.unlock();
     //////////////////////////////
@@ -288,11 +290,9 @@ namespace lwr_controllers {
     /////////////////////////////
     force_traj_mutex_.lock();
 
-    time_force_ = 0;    
     force_ref_duration_ = req.command.force_ref_duration;
-    fz_des_final_ = req.command.forcez;
-    evaluate_force_reference_constants(fz_des_final_, force_ref_duration_);
-
+    evaluate_force_reference_constants(req.command.forcez, force_ref_duration_);
+    time_force_ = 0;    
 
     force_traj_mutex_.unlock();
     ////////////////////////////
@@ -309,36 +309,18 @@ namespace lwr_controllers {
     res.command.km_f = km_f_;
     res.command.kd_f = kd_f_;
 
-    // get current robot joints configuration q
-    KDL::JntArray q;
-    q.resize(kdl_chain_.getNrOfJoints());
-    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
-	q(i) = joint_handles_[i].getPosition();
-
-    // forward kinematics
-    KDL::Frame ee_fk_frame;
-    ee_fk_solver_->JntToCart(q, ee_fk_frame);
-
-    // evaluate current cartesian configuration
-    KDL::Rotation R_ws_ee;
-    KDL::Vector p_ws_ee;
-    double yaw, pitch, roll;
-    R_ws_ee = R_ws_base_ * ee_fk_frame.M;
-    R_ws_ee.GetEulerZYX(yaw, pitch, roll);
-    p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
-
     // get position
-    res.command.x = p_ws_ee.x();
-    res.command.y = p_ws_ee.y();
+    res.command.x = prev_pos_setpoint_(0);
+    res.command.y = prev_pos_setpoint_(1);
     res.command.p2p_traj_duration = p2p_traj_duration_;
 
     // get attitude
-    res.command.yaw = yaw;
-    res.command.pitch = pitch;
-    res.command.roll = roll;
+    res.command.yaw = prev_att_setpoint_(0);
+    res.command.pitch = prev_att_setpoint_(1);
+    res.command.roll = prev_att_setpoint_(2);
     
     // get force
-    res.command.forcez = fz_des_final_;
+    res.command.forcez = prev_fz_setpoint_;
     res.command.force_ref_duration = force_ref_duration_;
 
     // get circle trajectory
@@ -353,26 +335,10 @@ namespace lwr_controllers {
 
   void HybridImpedanceController::evaluate_force_reference_constants(double force_des, double duration)
   {
-    // get robot current joints configuration
-    KDL::JntArray q;
-    q.resize(kdl_chain_.getNrOfJoints());
-    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
-	q(i) = joint_handles_[i].getPosition();
-
-    // forward kinematics
-    KDL::Frame ee_fk_frame;
-    ee_fk_solver_->JntToCart(q, ee_fk_frame);
-
-    // evaluate current cartesian configuration
-    KDL::Rotation R_ws_ee;
-    R_ws_ee = R_ws_base_ * ee_fk_frame.M;
-
-    KDL::Frame force_transformation(R_ws_ee, R_ws_ee * (-p_wrist_ee_));
-    KDL::Wrench ws_F_ee;
-    ws_F_ee = force_transformation * wrench_wrist_;
-    force_ref_const_(0) = ws_F_ee.force.z();
-    force_ref_const_(1) = FORCE_REF_COEFF_2 * (force_des - ws_F_ee.force.z()) / pow(duration, 2);
-    force_ref_const_(2) = FORCE_REF_COEFF_3 * (force_des - ws_F_ee.force.z()) / pow(duration, 3);
+    force_ref_const_(0) = prev_fz_setpoint_;
+    force_ref_const_(1) = FORCE_REF_COEFF_2 * (force_des - prev_fz_setpoint_) / pow(duration, 2);
+    force_ref_const_(2) = FORCE_REF_COEFF_3 * (force_des - prev_fz_setpoint_) / pow(duration, 3);
+    prev_fz_setpoint_ = force_des;
   }
 
   double HybridImpedanceController::eval_force_reference(const ros::Duration& period)
@@ -425,26 +391,6 @@ namespace lwr_controllers {
 								     Eigen::Vector3d& desired_attitude,
 								     double duration)
   { 
-    // get current robot joints configuration q
-    KDL::JntArray q;
-    q.resize(kdl_chain_.getNrOfJoints());
-    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
-	q(i) = joint_handles_[i].getPosition();
-
-    // forward kinematics
-    KDL::Frame ee_fk_frame;
-    ee_fk_solver_->JntToCart(q, ee_fk_frame);
-
-    // evaluate current cartesian configuration
-    KDL::Rotation R_ws_ee;
-    KDL::Vector p_ws_ee;
-    KDL::Vector current_attitude;
-    double yaw, pitch, roll;
-    R_ws_ee = R_ws_base_ * ee_fk_frame.M;
-    R_ws_ee.GetEulerZYX(yaw, pitch, roll);
-    p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
-    current_attitude = KDL::Vector(yaw, pitch, roll);
-    
     // evaluate common part of constants
     double constant_0, constant_1, constant_2;
     constant_0 = P2P_COEFF_3 / pow(duration, 3);
@@ -454,12 +400,13 @@ namespace lwr_controllers {
     // evaluate constants for x and y trajectories
     for (int i=0; i<2; i++)
       {
-	double error = desired_position(i) - p_ws_ee.data[i];
-	p2p_trj_const_(0, i) = p_ws_ee.data[i];
+	double error = desired_position(i) - prev_pos_setpoint_(i);
+	p2p_trj_const_(0, i) = prev_pos_setpoint_(i);
 	p2p_trj_const_(1, i) = error * constant_0;
 	p2p_trj_const_(2, i) = error * constant_1;
 	p2p_trj_const_(3, i) = error * constant_2;
       }
+    prev_pos_setpoint_ = desired_position;
 
     // evaluate constants yaw, pitch and roll trajectories
     double yaw_cmd, pitch_cmd, roll_cmd;
@@ -473,12 +420,13 @@ namespace lwr_controllers {
     for (int i=0; i<3; i++)
       {
 
-	double error = angles::normalize_angle(des_attitude_fixed(i) - current_attitude.data[i]);
-	p2p_trj_const_(0, i + 3) = current_attitude.data[i];
+	double error = angles::normalize_angle(des_attitude_fixed(i) - prev_att_setpoint_(i));
+	p2p_trj_const_(0, i + 3) = prev_att_setpoint_(i);
 	p2p_trj_const_(1, i + 3) = error * constant_0;
 	p2p_trj_const_(2, i + 3) = error * constant_1;
 	p2p_trj_const_(3, i + 3) = error * constant_2;
       }
+    prev_att_setpoint_ = des_attitude_fixed;
 
   }
 

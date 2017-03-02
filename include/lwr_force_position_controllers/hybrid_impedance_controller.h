@@ -46,9 +46,11 @@ namespace lwr_controllers
     Eigen::MatrixXd Kp_, Kd_;
     double p2p_traj_duration_;
     Eigen::MatrixXf p2p_trj_const_;
+    Eigen::Vector3d prev_pos_setpoint_;
+    Eigen::Vector3d prev_att_setpoint_;
 
     // hybrid impedance controller (force)
-    double fz_des_final_;
+    double prev_fz_setpoint_;
     double km_f_, kd_f_;
     double force_ref_duration_;
     Eigen::VectorXf force_ref_const_;
