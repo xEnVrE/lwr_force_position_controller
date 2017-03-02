@@ -30,7 +30,7 @@
   </xacro:model_torso>
   
   <xacro:kuka_lwr name="lwr" parent="vito_anchor">
-    <origin xyz="-0.165 0.10858 0.390" rpy="-1.5707963267948966 0.5235987010713441 0.5235990737060282"/>
+    <origin xyz="-0.165 0.10858 0.390" rpy="-1.5707963267948966 -0.5235987010713441 0.5235990737060282"/>
   </xacro:kuka_lwr>
 
   <xacro:end_effector_kuka_lwr parent="lwr_7_link" name="lwr">
