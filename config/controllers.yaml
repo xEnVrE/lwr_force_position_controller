@@ -33,19 +33,25 @@ lwr:
     type: lwr_force_position_controllers/FtSensorController
     root_name: vito_anchor
     tip_name: lwr_7_link
-    topic_name: /lwr/ft_sensor
+    topic_name: /my_sensor/ft_sensor_hw/my_sensor
     ft_sensor_bias: [0, 0, 0, 0, 0, 0]
     base_tool_weight_com: [0, 0, 0, 0, 0, 0]
-    p_wrist_toolcom: [0, 0, 0.1]
-    publish_rate: 200 #Hz
+    p_wrist_toolcom: [0, 0, 0]
+    publish_rate: 500 #Hz
 
   # Cartesian Position Controller
   cartesian_position_controller:
     type: lwr_force_position_controllers/CartesianPositionController
     root_name: vito_anchor
     tip_name: lwr_7_link
-    p_wrist_ee: [0, 0, 0.025]
     publish_rate: 1000 #Hz
+
+    # with pen
+    p_wrist_ee: [0, 0, 0.255]
+    
+    # without pen
+    # p_wrist_ee: [0, 0, 0.18]
+
 
   # Hybrid Impedance Controller 
   # (Spong, Journal of Robotics And Automation, Vol. 4, Issue 5, 1988)
@@ -54,8 +60,19 @@ lwr:
     root_name: vito_anchor
     tip_name: lwr_7_link
     internal_motion_controlled_link: lwr_3_link
-    p_wrist_ee: [0, 0, 0.025]
-    p_base_ws: [-0.7, 0, 0.05]                                                                                                                
+    
+    # with pen
+    p_wrist_ee: [0, 0, 0.255]
+    
+    # without pen
+    # p_wrist_ee: [0, 0, 0.18]
+    
+    # table + foam
+    p_base_ws: [-0.7, 0, 0.05]
+    
+    #  table + wood + foam
+    # p_base_ws: [-0.7, 0, 0.075]
+    
     ws_base_angles: [0, 0, 0]
     publish_rate: 1000 #Hz
 
