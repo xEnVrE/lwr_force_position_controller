@@ -62,6 +62,7 @@ namespace lwr_controllers
     // s(t) = a5 * t^5 + a4 * t^4 + a3 * t^3 + a0
     KDL::JntArrayAcc traj_des_;
     KDL::JntArray traj_a0_, traj_a3_, traj_a4_, traj_a5_;
+    KDL::JntArray prev_q_setpoint_;
     double time_;
     double p2p_traj_duration_;
 

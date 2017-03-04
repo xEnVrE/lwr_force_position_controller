@@ -81,6 +81,7 @@ namespace lwr_controllers {
     traj_a3_.resize(kdl_chain_.getNrOfJoints());
     traj_a4_.resize(kdl_chain_.getNrOfJoints());
     traj_a5_.resize(kdl_chain_.getNrOfJoints());
+    prev_q_setpoint_.resize(kdl_chain_.getNrOfJoints());
 
     // advertise CartesianPositionCommand service
     set_cmd_service_ = n.advertiseService("set_cartesian_position_command", \
@@ -116,6 +117,7 @@ namespace lwr_controllers {
 	traj_a3_(i) = 0;
 	traj_a4_(i) = 0;
 	traj_a5_(i) = 0;
+	prev_q_setpoint_(i) = joint_handles_[i].getPosition();
       }
     // initialize publish time
     last_publish_time_ = time;
@@ -377,13 +379,17 @@ namespace lwr_controllers {
 	  return;
 	}
 
-    // evaluate trajectory constants
+    // evaluate trajectory constants and update prev_q_setpoint
     for(int i=0; i<joint_handles_.size(); i++)
       {
-	traj_a0_(i) = joint_msr_states_.q(i);
-	traj_a3_(i) = TRAJ_3 / pow(p2p_traj_duration_, 3) * (q_des(i) - joint_msr_states_.q(i));
-	traj_a4_(i) = TRAJ_4 / pow(p2p_traj_duration_, 4) * (q_des(i) - joint_msr_states_.q(i));
-	traj_a5_(i) = TRAJ_5 / pow(p2p_traj_duration_, 5) * (q_des(i) - joint_msr_states_.q(i));
+	// evaluate trajectory constant
+	traj_a0_(i) = prev_q_setpoint_(i);
+	traj_a3_(i) = TRAJ_3 / pow(p2p_traj_duration_, 3) * (q_des(i) - prev_q_setpoint_(i));
+	traj_a4_(i) = TRAJ_4 / pow(p2p_traj_duration_, 4) * (q_des(i) - prev_q_setpoint_(i));
+	traj_a5_(i) = TRAJ_5 / pow(p2p_traj_duration_, 5) * (q_des(i) - prev_q_setpoint_(i));
+	
+	// update prev_q_setpoint
+	prev_q_setpoint_(i) = q_des(i);
       }
     time_ = 0;
     
