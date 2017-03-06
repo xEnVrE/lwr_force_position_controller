@@ -369,12 +369,11 @@ namespace lwr_controllers {
 
     // control strategy is to command an height offset between ee and im link
     double offset = 0.5;
-    im_link_des_state << 0, 0 , ee_fk_frame.p.z() + offset;
+    im_link_des_state << ee_fk_frame.p.x() / 2, 0 , ee_fk_frame.p.z() + offset;
 
     // filter and add the command to TAU_FRI
     tau_fri_ += ns_filter * base_J_im_linear.transpose() * \
       (Kp_im_ * (im_link_des_state - im_link_state) - Kd_im_ * im_link_state_dot);
-
     //
     //////////////////////////////////////////////////////////////////////////////////
 
@@ -434,6 +433,8 @@ namespace lwr_controllers {
     if (req.command.kp_im != -1)
       {
 	Kp_im_ = Eigen::Matrix<double, 3, 3>::Zero();
+	Kp_im_(0,0) = 1;
+	Kp_im_(1,1) = 1;
 	Kp_im_(2,2) = req.command.kp_im;
       }
     if (req.command.kd_im != -1)
