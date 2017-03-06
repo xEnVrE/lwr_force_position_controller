@@ -288,9 +288,9 @@ namespace lwr_controllers {
     des_pose.z(req.command.z);
 
     // set the desired attitude requested by the user
-    des_attitude = KDL::Rotation::EulerZYX(req.command.yaw,\
-					    req.command.pitch,\
-					    req.command.roll);
+    des_attitude = KDL::Rotation::RPY(req.command.roll,\
+				      req.command.pitch,\
+				      req.command.yaw);
 
     // set the desired gains requested by the user
     // TEMPORARY: -1 means that the user requested the last gain set
@@ -325,7 +325,7 @@ namespace lwr_controllers {
 	q(i) = joint_handles_[i].getPosition();
 
     ee_fk_solver_->JntToCart(q, ee_fk_frame);
-    ee_fk_frame.M.GetEulerZYX(yaw, pitch, roll);
+    ee_fk_frame.M.GetRPY(roll, pitch, yaw);
     
     // get desired position 
     res.command.x = ee_fk_frame.p.x();
