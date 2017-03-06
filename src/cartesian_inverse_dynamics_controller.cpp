@@ -1,5 +1,5 @@
 #include <pluginlib/class_list_macros.h>
-#include <utils/euler_kinematical_rpy.h>
+#include <utils/euler_kinematical_zyz.h>
 #include <angles/angles.h>
 #include <kdl_conversions/kdl_msg.h>
 #include <eigen_conversions/eigen_kdl.h>
@@ -208,10 +208,10 @@ namespace lwr_controllers {
     //////////////////////////////////////////////////////////////////////////////////
     //
 
-    // get the current RPY attitude representation PHI from R_ws_base * ee_fk_frame.M
-    double yaw, pitch, roll;
+    // get the current ZYZ attitude representation PHI from R_ws_base * ee_fk_frame.M
+    double alpha, beta, gamma;
     R_ws_ee_ = R_ws_base_ * ee_fk_frame.M;
-    R_ws_ee_.GetEulerZYX(yaw, pitch, roll);
+    R_ws_ee_.GetEulerZYZ(alpha, beta, gamma);
     
     // evaluate the transformation matrix between 
     // the geometric and analytical jacobian TA
@@ -221,7 +221,7 @@ namespace lwr_controllers {
     // where T is the Euler Kinematical Matrix
     //
     Eigen::Matrix3d ws_T;
-    eul_kin_RPY(pitch, yaw, ws_T);
+    eul_kin_ZYZ(beta, alpha, ws_T);
     ws_TA_.block<3,3>(3,3) = ws_T.inverse();
 
     // evaluate ws_J_ee
@@ -276,7 +276,7 @@ namespace lwr_controllers {
     // evaluate the derivative of the state using the analytical jacobian
     Eigen::Matrix3d ws_T_dot;
     ws_xdot_ = ws_JA_ee * joint_msr_states_.qdot.data;
-    eul_kin_RPY_dot(pitch, yaw, ws_xdot_(4), ws_xdot_(3), ws_T_dot);
+    eul_kin_ZYZ_dot(beta, alpha, ws_xdot_(4), ws_xdot_(3), ws_T_dot);
     ws_TA_dot_.block<3,3>(3,3) = - ws_T.inverse() * ws_T_dot * ws_T.inverse();
 
     // evaluate the derivative of the jacobian base_J_ee
@@ -389,7 +389,7 @@ namespace lwr_controllers {
     p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
     
     // evaluate the state
-    ws_x_ << p_ws_ee(0), p_ws_ee(1), p_ws_ee(2), yaw, pitch, roll;
+    ws_x_ << p_ws_ee(0), p_ws_ee(1), p_ws_ee(2), alpha, beta, gamma;
 
     // the derivative of the state 
     // was already evaluated in the previous sections
@@ -465,7 +465,7 @@ namespace lwr_controllers {
 
   void CartesianInverseDynamicsController::set_ws_base_angles(double alpha, double beta, double gamma)
   {
-    R_ws_base_ = KDL::Rotation::EulerZYX(alpha, beta, gamma);
+    R_ws_base_ = KDL::Rotation::EulerZYZ(alpha, beta, gamma);
   }
     
 } // namespace

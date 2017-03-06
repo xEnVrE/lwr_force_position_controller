@@ -9,10 +9,10 @@ float64 kd_f
 float64 x
 float64 y
 float64 p2p_traj_duration
-# desired YPR (aka ZYX)
-float64 yaw
-float64 pitch
-float64 roll
+# desired ZYZ
+float64 alpha
+float64 beta
+float64 gamma
 # desired force
 float64 forcez
 float64 force_ref_duration
