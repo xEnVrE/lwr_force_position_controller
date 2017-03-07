@@ -25,7 +25,7 @@ namespace lwr_controllers
     bool get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req, \
 		 lwr_force_position_controllers::HybridImpedanceCommand::Response &res);
     void get_parameters(ros::NodeHandle &n);
-    /* void eval_current_circular_traj(const ros::Duration& period); */
+    void set_p_sensor_cp(double x, double y, double z);
     void eval_current_point_to_point_traj(const ros::Duration& period,\
 					  Eigen::VectorXd& x_des,\
 					  Eigen::VectorXd& xdot_des,\
@@ -55,6 +55,7 @@ namespace lwr_controllers
     double force_ref_duration_;
     Eigen::VectorXf force_ref_const_;
     double time_force_;
+    KDL::Vector p_sensor_cp_;
 
     // circle trajectory
     bool circle_trj_;

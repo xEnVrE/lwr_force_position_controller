@@ -154,7 +154,7 @@ namespace lwr_controllers {
     // transform the ft_sensor wrench 
     // move the reference point from the wrist to the tool tip and project in workspace basis
 
-    KDL::Frame force_transformation(R_ws_ee_, R_ws_ee_ * (-p_wrist_ee_));
+    KDL::Frame force_transformation(R_ws_ee_, R_ws_ee_ * (-p_sensor_cp_));
     KDL::Wrench ws_F_ee;
     ws_F_ee = force_transformation * wrench_wrist_;
 
@@ -228,6 +228,9 @@ namespace lwr_controllers {
     // vector from the wrist to the tool tip (projected in lwr_link_7 frame)
     std::vector<double> p_wrist_ee;
 
+    // vector from the sensor to the contact point
+    std::vector<double> p_sensor_cp;
+
     // vector from vito_anchor to the workspace (projected in world frame)
     std::vector<double> p_base_ws;
 
@@ -236,13 +239,20 @@ namespace lwr_controllers {
 
     // get parameters form rosparameter server
     n.getParam("p_wrist_ee", p_wrist_ee);
+    n.getParam("p_sensor_cp", p_sensor_cp);
     n.getParam("p_base_ws", p_base_ws);
     n.getParam("ws_base_angles", ws_base_angles);
 
     // set internal members
     set_p_wrist_ee(p_wrist_ee.at(0), p_wrist_ee.at(1), p_wrist_ee.at(2));
+    set_p_sensor_cp(p_sensor_cp.at(0), p_sensor_cp.at(1), p_sensor_cp.at(2));
     set_p_base_ws(p_base_ws.at(0), p_base_ws.at(1), p_base_ws.at(2));
     set_ws_base_angles(ws_base_angles.at(0), ws_base_angles.at(1), ws_base_angles.at(2));
+  }
+
+  void HybridImpedanceController::set_p_sensor_cp(double x, double y, double z)
+  {
+    p_sensor_cp_ = KDL::Vector(x, y, z);
   }
 
   bool HybridImpedanceController::set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
