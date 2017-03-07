@@ -110,7 +110,7 @@ namespace lwr_controllers {
     KDL::JntArray q_im_a5;
     q_im_a5.resize(im_a5_chain_.getNrOfJoints());
     for(size_t i=0; i<im_a5_chain_.getNrOfJoints(); i++)
-	q_im_a5(i) = joint_msr_states_.q(i);
+	q_im_a5(i) = joint_handles_[i].getPosition();
 
     // get current attitude for 5th link
     double alpha_im_a5, beta_im_a5, gamma_im_a5;
