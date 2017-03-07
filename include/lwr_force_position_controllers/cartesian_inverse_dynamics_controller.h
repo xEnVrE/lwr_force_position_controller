@@ -69,19 +69,26 @@ namespace lwr_controllers
     boost::scoped_ptr<KDL::ChainJntToJacSolver> ee_jacobian_solver_, wrist_jacobian_solver_;
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> ee_fk_solver_;
     boost::scoped_ptr<KDL::ChainJntToJacDotSolver> ee_jacobian_dot_solver_;
-    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_jacobian_solver_;
-    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_fk_solver_;
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_a4_jacobian_solver_;
+    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_a4_fk_solver_;
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_a5_jacobian_solver_;
+    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_a5_fk_solver_;
+
     // chain required to move the reference point of jacobians
     KDL::Chain extended_chain_;
     // chain required to control internal motion
-    KDL::Chain im_chain_;
+    KDL::Chain im_a4_chain_;
+    KDL::Chain im_a5_chain_;
 
     // these matrices are sparse and initialized in init()
     Eigen::MatrixXd ws_TA_, ws_TA_dot_;
+    Eigen::MatrixXd base_TA_im_a5_;
 
     // null space controller gains
-    Eigen::Matrix<double, 3, 3> Kp_im_;
-    Eigen::Matrix<double, 3, 3> Kd_im_;
+    Eigen::Matrix<double, 6, 6> Kp_im_;
+    Eigen::Matrix<double, 6, 6> Kd_im_;
+
+    double gamma_im_a5_initial_;
 
     // commands
     Eigen::VectorXd tau_fri_;
