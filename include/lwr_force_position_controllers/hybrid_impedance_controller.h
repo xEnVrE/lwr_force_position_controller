@@ -20,6 +20,7 @@ namespace lwr_controllers
     void update(const ros::Time& time, const ros::Duration& period);
 
   private:
+    void set_default_traj();
     bool set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req, \
 		 lwr_force_position_controllers::HybridImpedanceCommand::Response &res);
     bool get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req, \
@@ -65,9 +66,12 @@ namespace lwr_controllers
     ros::Publisher pub_x_des_, pub_xdot_des_, pub_xdotdot_des_;
     ros::Publisher pub_error_;
 
-    //
+    // 
     boost::mutex p2p_traj_mutex_;
     boost::mutex force_traj_mutex_;
+
+    // switch between z force control and z position control
+    bool enable_force_;
   };
 
 } // namespace

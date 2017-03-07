@@ -80,45 +80,11 @@ namespace lwr_controllers {
     ///////////////////////////////////////////////////////////////
     //
 
-    // get current robot joints configuration q
-    KDL::JntArray q;
-    q.resize(kdl_chain_.getNrOfJoints());
-    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
-	q(i) = joint_handles_[i].getPosition();
+    // set default trajectory (force and position)
+    set_default_traj();
 
-    // forward kinematics
-    KDL::Frame ee_fk_frame;
-    ee_fk_solver_->JntToCart(q, ee_fk_frame);
-
-    // evaluate current cartesian configuration
-    KDL::Rotation R_ws_ee;
-    KDL::Vector p_ws_ee;
-    double alpha, beta, gamma;
-    R_ws_ee = R_ws_base_ * ee_fk_frame.M;
-    R_ws_ee.GetEulerZYZ(alpha, beta, gamma);
-    p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
-
-    // set position and attitude tajectory constants
-    for(int i=0; i<6; i++)
-      {
-	p2p_trj_const_(1, i) = 0;
-	p2p_trj_const_(2, i) = 0;
-	p2p_trj_const_(3, i) = 0;
-      }
-
-    for(int i=0; i<2; i++)
-      p2p_trj_const_(0, i) = p_ws_ee.data[i];
-    p2p_trj_const_(0, 3) = alpha;
-    p2p_trj_const_(0, 4) = beta;
-    p2p_trj_const_(0, 5) = gamma;
-    prev_pos_setpoint_ << p_ws_ee.x(), p_ws_ee.y(), 0.2;
-    prev_att_setpoint_ << alpha, beta, gamma;
-
-    // set force trajectory constants
-    for(int i = 0; i<3; i++)
-      force_ref_const_(i)  = 0;
-    force_ref_const_(0) = -0.1;
-    prev_fz_setpoint_ = -0.1;
+    // set z position control
+    enable_force_ = false;
 
     // reset the time
     time_ = 0;
@@ -184,8 +150,12 @@ namespace lwr_controllers {
 
     // force controlled DoF
     // ws_Fz
-    double err_force = fz_des - ws_F_ee.force.z();
-    acc_cmd(2) = - kd_f_ * ws_xdot_(2) + km_f_ * err_force;
+    double err_force;
+    if (enable_force_)
+      {
+	err_force = fz_des - ws_F_ee.force.z();
+	acc_cmd(2) = - kd_f_ * ws_xdot_(2) + km_f_ * err_force;
+      }
 
     //
     /////////////////////////////////////////////////////////////////////
@@ -207,11 +177,77 @@ namespace lwr_controllers {
 	publish_data(pub_force_, ws_F_ee);
 	publish_data(pub_force_des_, KDL::Wrench(KDL::Vector(0, 0, fz_des),\
 						 KDL::Vector(0, 0, 0)));
-	Eigen::VectorXd errors;
-	errors = err_x;
-	errors(2) = err_force;
-	publish_data(pub_error_, errors);
+
+	if(enable_force_)
+	  {
+	    Eigen::VectorXd errors;
+	    errors = err_x;
+	    errors(2) = err_force;
+	    publish_data(pub_error_, errors);
+	  }
+	else
+	  {
+	    Eigen::VectorXd errors;
+	    errors = err_x;
+	    publish_data(pub_error_, errors);
+	  }
       }
+  }
+
+  void HybridImpedanceController::set_default_traj()
+  {
+    // get current robot joints configuration q
+    KDL::JntArray q;
+    q.resize(kdl_chain_.getNrOfJoints());
+    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
+      q(i) = joint_handles_[i].getPosition();
+    
+    // forward kinematics
+    KDL::Frame ee_fk_frame;
+    ee_fk_solver_->JntToCart(q, ee_fk_frame);
+    
+    // evaluate current cartesian configuration
+    KDL::Rotation R_ws_ee;
+    KDL::Vector p_ws_ee;
+    double alpha, beta, gamma;
+    R_ws_ee = R_ws_base_ * ee_fk_frame.M;
+    R_ws_ee.GetEulerZYZ(alpha, beta, gamma);
+    p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
+
+    ///////////////////////////////
+    p2p_traj_mutex_.lock();
+
+    // set position and attitude tajectory constants
+    for(int i=0; i<6; i++)
+      {
+	p2p_trj_const_(1, i) = 0;
+	p2p_trj_const_(2, i) = 0;
+	p2p_trj_const_(3, i) = 0;
+      }
+
+    for(int i=0; i<3; i++)
+      p2p_trj_const_(0, i) = p_ws_ee.data[i];
+    p2p_trj_const_(0, 3) = alpha;
+    p2p_trj_const_(0, 4) = beta;
+    p2p_trj_const_(0, 5) = gamma;
+    prev_pos_setpoint_ << p_ws_ee.x(), p_ws_ee.y(), p_ws_ee.z();
+    prev_att_setpoint_ << alpha, beta, gamma;
+
+    p2p_traj_mutex_.unlock();
+    ///////////////////////////////
+
+    ///////////////////////////////
+    force_traj_mutex_.lock();
+
+    // set force trajectory constants
+    for(int i = 0; i<3; i++)
+      force_ref_const_(i)  = 0;
+    force_ref_const_(0) = -0.1;
+    prev_fz_setpoint_ = -0.1;
+
+    force_traj_mutex_.unlock();
+    ///////////////////////////////
+
   }
 
   void HybridImpedanceController::get_parameters(ros::NodeHandle &n)
@@ -255,20 +291,16 @@ namespace lwr_controllers {
     // set requested position and attitude
     desired_position(0) = req.command.x;
     desired_position(1) = req.command.y;
+    desired_position(2) = req.command.z;
     desired_attitude(0) = req.command.alpha;
     desired_attitude(1) = req.command.beta;
     desired_attitude(2) = req.command.gamma;
 
     // set the desired gains requested by the user
-    // TEMPORARY: -1 means that the user requested the last gain set
-    if (req.command.kp != -1)
-      Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kp;
-    if (req.command.kd != -1)
-      Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kd; 
-    if (req.command.km_f != -1)
-      km_f_ = req.command.km_f;
-    if (req.command.kd_f != -1)
-      kd_f_ = req.command.kd_f;
+    Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kp;
+    Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kd; 
+    km_f_ = req.command.km_f;
+    kd_f_ = req.command.kd_f;
 
     ///////////////////////////////
     p2p_traj_mutex_.lock();
@@ -291,6 +323,13 @@ namespace lwr_controllers {
     force_traj_mutex_.unlock();
     ////////////////////////////
 
+    // check if the user selected force control or not
+    if(enable_force_ != req.command.enable_force)
+	set_default_traj();
+
+    enable_force_ = req.command.enable_force;
+
+
     return true;
   }
 
@@ -306,6 +345,7 @@ namespace lwr_controllers {
     // get position
     res.command.x = prev_pos_setpoint_(0);
     res.command.y = prev_pos_setpoint_(1);
+    res.command.z = prev_pos_setpoint_(2);
     res.command.p2p_traj_duration = p2p_traj_duration_;
 
     // get attitude
@@ -317,6 +357,8 @@ namespace lwr_controllers {
     res.command.forcez = prev_fz_setpoint_;
     res.command.force_ref_duration = force_ref_duration_;
 
+    // get enable_force
+    res.command.enable_force = enable_force_;
     return true;
   }
 
@@ -385,7 +427,7 @@ namespace lwr_controllers {
     constant_2 = P2P_COEFF_5 / pow(duration, 5);
 
     // evaluate constants for x and y trajectories
-    for (int i=0; i<2; i++)
+    for (int i=0; i<3; i++)
       {
 	double error = desired_position(i) - prev_pos_setpoint_(i);
 	p2p_trj_const_(0, i) = prev_pos_setpoint_(i);
