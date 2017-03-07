@@ -48,6 +48,7 @@ namespace lwr_controllers
     Eigen::MatrixXf p2p_trj_const_;
     Eigen::Vector3d prev_pos_setpoint_;
     Eigen::Vector3d prev_att_setpoint_;
+    double time_;
 
     // hybrid impedance controller (force)
     double prev_fz_setpoint_;
@@ -56,14 +57,6 @@ namespace lwr_controllers
     Eigen::VectorXf force_ref_const_;
     double time_force_;
     KDL::Vector p_sensor_cp_;
-
-    // circle trajectory
-    bool circle_trj_;
-    double circle_trj_frequency_;
-    double circle_trj_radius_;
-    double circle_trj_center_x_;
-    double circle_trj_center_y_;
-    double time_;
 
     // publisher to monitor data
     ros::Time last_publish_time_;

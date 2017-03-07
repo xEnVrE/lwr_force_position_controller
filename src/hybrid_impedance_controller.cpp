@@ -8,10 +8,6 @@
 #define DEFAULT_KD 20
 #define DEFAULT_KM_F 1
 #define DEFAULT_KD_F 25
-#define DEFAULT_CIRCLE_FREQ 0.1
-#define DEFAULT_CIRCLE_RADIUS 0.1
-#define DEFAULT_CIRCLE_CENTER_X 0
-#define DEFAULT_CIRCLE_CENTER_Y 0
 #define DEFAULT_P2P_TRAJ_DURATION 5.0
 #define DEFAULT_FORCE_TRAJ_DURATION 2.0
 #define P2P_COEFF_3 10.0
@@ -53,11 +49,6 @@ namespace lwr_controllers {
     // set defaults
     km_f_ = DEFAULT_KM_F;
     kd_f_ = DEFAULT_KD_F;
-    circle_trj_ = false;
-    circle_trj_frequency_ = DEFAULT_CIRCLE_FREQ;
-    circle_trj_radius_ = DEFAULT_CIRCLE_RADIUS;
-    circle_trj_center_x_ = DEFAULT_CIRCLE_CENTER_X;
-    circle_trj_center_y_ = DEFAULT_CIRCLE_CENTER_Y;
     p2p_traj_duration_ = DEFAULT_P2P_TRAJ_DURATION;
     force_ref_duration_ = DEFAULT_FORCE_TRAJ_DURATION;
 
@@ -268,13 +259,6 @@ namespace lwr_controllers {
     desired_attitude(1) = req.command.beta;
     desired_attitude(2) = req.command.gamma;
 
-    // // set requested circular trajectory parameters
-    // circle_trj_ = req.command.circle_trj;
-    // circle_trj_frequency_ = req.command.frequency;
-    // circle_trj_radius_ = req.command.radius;
-    // circle_trj_center_x_ = req.command.center_x;
-    // circle_trj_center_y_ = req.command.center_y;
-
     // set the desired gains requested by the user
     // TEMPORARY: -1 means that the user requested the last gain set
     if (req.command.kp != -1)
@@ -332,13 +316,6 @@ namespace lwr_controllers {
     // get force
     res.command.forcez = prev_fz_setpoint_;
     res.command.force_ref_duration = force_ref_duration_;
-
-    // get circle trajectory
-    res.command.circle_trj = circle_trj_;
-    res.command.frequency = circle_trj_frequency_;
-    res.command.radius = circle_trj_radius_;
-    res.command.center_x = circle_trj_center_x_;
-    res.command.center_y = circle_trj_center_y_;
 
     return true;
   }
@@ -439,33 +416,6 @@ namespace lwr_controllers {
     prev_att_setpoint_ = des_attitude_fixed;
 
   }
-
-  // void HybridImpedanceController::eval_current_circular_traj(const ros::Duration& period)
-  // {
-  //   // evaluate the circular trajectory
-  //   time_ = time_ + period.toSec();
-  //   double f = circle_trj_frequency_;
-  //   double omega = 2 * M_PI * f;
-  //   double rho = circle_trj_radius_;
-  //   double x_trj = circle_trj_center_x_ + rho * cos(omega * time_);
-  //   double y_trj = circle_trj_center_y_ + rho * sin(omega * time_);
-  //   double dx_trj = -omega * rho * sin(omega * time_);
-  //   double dy_trj = omega * rho * cos(omega * time_);
-  //   double ddx_trj = -omega * omega * rho * cos(omega * time_);
-  //   double ddy_trj = -omega * omega * rho * sin(omega * time_);
-
-  //   // set the position
-  //   x_des_(0) = x_trj;
-  //   x_des_(1) = y_trj;
-
-  //   // set the velocity
-  //   xdot_des_(0) = dx_trj;
-  //   xdot_des_(1) = dy_trj;
-
-  //   // set the acceleration
-  //   xdotdot_des_(0) = ddx_trj;
-  //   xdotdot_des_(1) = ddy_trj;
-  // }
 
   void HybridImpedanceController::publish_data(ros::Publisher& pub, KDL::Wrench wrench)
   {
