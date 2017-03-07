@@ -115,8 +115,8 @@ namespace lwr_controllers {
     // get current attitude for 5th link
     double alpha_im_a5, beta_im_a5, gamma_im_a5;
     KDL::Frame im_a5_fk_frame;
-    im_a5_fk_frame.M.GetEulerZYZ(alpha_im_a5, beta_im_a5, gamma_im_a5);
     im_a5_fk_solver_->JntToCart(q_im_a5, im_a5_fk_frame);
+    im_a5_fk_frame.M.GetEulerZYZ(alpha_im_a5, beta_im_a5, gamma_im_a5);
 
     gamma_im_a5_initial_ = gamma_im_a5;
   }
