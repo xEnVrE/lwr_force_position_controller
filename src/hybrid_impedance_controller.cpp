@@ -102,9 +102,9 @@ namespace lwr_controllers {
     // evaluate current cartesian configuration
     KDL::Rotation R_ws_ee;
     KDL::Vector p_ws_ee;
-    double yaw, pitch, roll;
+    double alpha, beta, gamma;
     R_ws_ee = R_ws_base_ * ee_fk_frame.M;
-    R_ws_ee.GetEulerZYX(yaw, pitch, roll);
+    R_ws_ee.GetEulerZYZ(alpha, beta, gamma);
     p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
 
     // set position and attitude tajectory constants
@@ -117,11 +117,11 @@ namespace lwr_controllers {
 
     for(int i=0; i<2; i++)
       p2p_trj_const_(0, i) = p_ws_ee.data[i];
-    p2p_trj_const_(0, 3) = yaw;
-    p2p_trj_const_(0, 4) = pitch;
-    p2p_trj_const_(0, 5) = roll;
+    p2p_trj_const_(0, 3) = alpha;
+    p2p_trj_const_(0, 4) = beta;
+    p2p_trj_const_(0, 5) = gamma;
     prev_pos_setpoint_ << p_ws_ee.x(), p_ws_ee.y(), 0.2;
-    prev_att_setpoint_ << yaw, pitch, roll;
+    prev_att_setpoint_ << alpha, beta, gamma;
 
     // set force trajectory constants
     for(int i = 0; i<3; i++)
@@ -183,7 +183,7 @@ namespace lwr_controllers {
     Eigen::VectorXd acc_cmd = Eigen::VectorXd(6);
 
     // position controlled DoF
-    // ws_x ws_y R_ee_ws_(yaw, pitch, roll) 
+    // ws_x ws_y R_ee_ws_(alpha, beta, gamma) 
     acc_cmd = Kp_ * err_x + Kd_ * (xdot_des - ws_xdot_) + xdotdot_des;
     acc_cmd(0) = acc_cmd(0) - ws_F_ee.force.x();
     acc_cmd(1) = acc_cmd(1) - ws_F_ee.force.y();
@@ -264,9 +264,9 @@ namespace lwr_controllers {
     // set requested position and attitude
     desired_position(0) = req.command.x;
     desired_position(1) = req.command.y;
-    desired_attitude(0) = req.command.yaw;
-    desired_attitude(1) = req.command.pitch;
-    desired_attitude(2) = req.command.roll;
+    desired_attitude(0) = req.command.alpha;
+    desired_attitude(1) = req.command.beta;
+    desired_attitude(2) = req.command.gamma;
 
     // // set requested circular trajectory parameters
     // circle_trj_ = req.command.circle_trj;
@@ -325,9 +325,9 @@ namespace lwr_controllers {
     res.command.p2p_traj_duration = p2p_traj_duration_;
 
     // get attitude
-    res.command.yaw = prev_att_setpoint_(0);
-    res.command.pitch = prev_att_setpoint_(1);
-    res.command.roll = prev_att_setpoint_(2);
+    res.command.alpha = prev_att_setpoint_(0);
+    res.command.beta = prev_att_setpoint_(1);
+    res.command.gamma = prev_att_setpoint_(2);
     
     // get force
     res.command.forcez = prev_fz_setpoint_;
@@ -418,15 +418,15 @@ namespace lwr_controllers {
       }
     prev_pos_setpoint_ = desired_position;
 
-    // evaluate constants yaw, pitch and roll trajectories
-    double yaw_cmd, pitch_cmd, roll_cmd;
-    KDL::Rotation::EulerZYX(desired_attitude(0),
+    // evaluate constants alpha, beta and gamma trajectories
+    double alpha_cmd, beta_cmd, gamma_cmd;
+    KDL::Rotation::EulerZYZ(desired_attitude(0),
 			    desired_attitude(1),
-			    desired_attitude(2)).GetEulerZYX(yaw_cmd,\
-							     pitch_cmd,
-							     roll_cmd);
+			    desired_attitude(2)).GetEulerZYZ(alpha_cmd,\
+							     beta_cmd,
+							     gamma_cmd);
     Eigen::Vector3d des_attitude_fixed;
-    des_attitude_fixed << yaw_cmd, pitch_cmd, roll_cmd;
+    des_attitude_fixed << alpha_cmd, beta_cmd, gamma_cmd;
     for (int i=0; i<3; i++)
       {
 
