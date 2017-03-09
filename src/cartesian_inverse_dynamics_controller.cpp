@@ -498,18 +498,19 @@ namespace lwr_controllers {
     wrench_wrist_ = - wrench_wrist_topic;
   }
 
-  void CartesianInverseDynamicsController::get_gains_im(double& kp, double& kd)
+  void CartesianInverseDynamicsController::get_gains_im(double& kp_z, double& kp_att, double& kd)
   {
-    kp = Kp_im_(2, 2);
+    kp_z = Kp_im_(2, 2);
+    kp_att = Kp_im_(4, 4);
     kd = Kd_im_(0, 0);
   }
 
-  void CartesianInverseDynamicsController::set_gains_im(double kp, double kd)
+  void CartesianInverseDynamicsController::set_gains_im(double kp_z, double kp_att, double kd)
   {
-    Kp_im_(2,2) = kp;
-    Kp_im_(3,3) = kp;
-    Kp_im_(4,4) = kp;
-    Kp_im_(5,5) = kp;
+    Kp_im_(2,2) = kp_z;
+    Kp_im_(3,3) = kp_att;
+    Kp_im_(4,4) = kp_att;
+    Kp_im_(5,5) = kp_att;
     Kd_im_ = Eigen::Matrix<double, 6, 6>::Identity() * kd;
   }
 

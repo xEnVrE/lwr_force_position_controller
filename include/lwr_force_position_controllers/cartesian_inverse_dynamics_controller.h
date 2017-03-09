@@ -26,8 +26,8 @@ namespace lwr_controllers
     void starting(const ros::Time& time);
     void update(const ros::Time& time, const ros::Duration& period);
 
-    void get_gains_im(double& kp, double& kd);
-    void set_gains_im(double kp, double kd);
+    void get_gains_im(double& kp_z, double& kp_att, double& kd);
+    void set_gains_im(double kp_z, double kp_att, double kd);
     void set_p_wrist_ee(double x, double y, double z);
     void set_p_base_ws(double x, double y, double z);
     void set_ws_base_angles(double alpha, double beta, double gamma);

@@ -4,7 +4,8 @@
 #include <angles/angles.h>
 #include <geometry_msgs/WrenchStamped.h>
 
-#define DEFAULT_KP 20
+#define DEFAULT_KP_POS 20
+#define DEFAULT_KP_ATT 20
 #define DEFAULT_KD 20
 #define DEFAULT_KM_F 1
 #define DEFAULT_KD_F 25
@@ -51,7 +52,9 @@ namespace lwr_controllers {
 						&HybridImpedanceController::get_cmd_gains, this); 
 
     // instantiate variables
-    Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KP;
+    Kp_ = Eigen::Matrix<double, 6, 6>::Identity();
+    Kp_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity() * DEFAULT_KP_POS;
+    Kp_.block<3,3>(3,3) = Eigen::Matrix<double, 3, 3>::Identity() * DEFAULT_KP_ATT;
     Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KD; 
     p2p_trj_const_ = Eigen::MatrixXf(4, 6);
     force_ref_const_ = Eigen::VectorXf(3);
@@ -373,11 +376,12 @@ namespace lwr_controllers {
 						lwr_force_position_controllers::HybridImpedanceCommandGains::Response &res)
   {
     // set the desired gains requested by the user
-    Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kp;
+    Kp_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity() * req.command.kp_pos;
+    Kp_.block<3,3>(3,3) = Eigen::Matrix<double, 3, 3>::Identity() * req.command.kp_att;
     Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kd; 
     km_f_ = req.command.km_f;
     kd_f_ = req.command.kd_f;
-    set_gains_im(req.command.kp_im, req.command.kd_im);
+    set_gains_im(req.command.kp_z_im, req.command.kp_att_im, req.command.kd_im);
 
     return true;
   }
@@ -418,17 +422,19 @@ namespace lwr_controllers {
   bool HybridImpedanceController::get_cmd_gains(lwr_force_position_controllers::HybridImpedanceCommandGains::Request &req, \
 						lwr_force_position_controllers::HybridImpedanceCommandGains::Response &res)
   {
-    double kp_im, kd_im;
+    double kp_z_im, kp_att_im, kd_im;
 
     // get gains
-    res.command.kp = Kp_(0, 0);
+    res.command.kp_pos = Kp_(0, 0);
+    res.command.kp_att = Kp_(3, 3);
     res.command.kd = Kd_(0, 0);
     res.command.km_f = km_f_;
     res.command.kd_f = kd_f_;
 
     // get internal motion gains
-    get_gains_im(kp_im, kd_im);
-    res.command.kp_im = kp_im;
+    get_gains_im(kp_z_im, kp_att_im, kd_im);
+    res.command.kp_z_im = kp_z_im;
+    res.command.kp_att_im = kp_att_im;
     res.command.kd_im = kd_im;
 
     return true;
