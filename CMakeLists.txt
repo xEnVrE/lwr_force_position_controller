@@ -19,20 +19,23 @@ include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 
 add_message_files(
    FILES
-   CartesianPositionCommandMsg.msg
-   CartesianInverseCommandMsg.msg
-   HybridImpedanceCommandMsg.msg
-   FtSensorToolEstimationMsg.msg
+   CartesianPositionCommandTrajMsg.msg
+   CartesianPositionCommandGainsMsg.msg
+   HybridImpedanceCommandTrajPosMsg.msg
+   HybridImpedanceCommandTrajForceMsg.msg
+   HybridImpedanceCommandGainsMsg.msg
+   HybridImpedanceSwitchForcePosMsg.msg
    CartesianPositionJointsMsg.msg
 )
 
 add_service_files(
   FILES
-  CartesianPositionCommand.srv
-  CartesianInverseCommand.srv
-  HybridImpedanceCommand.srv
-  FtSensorToolEstimation.srv
-  FtSensorSetBias.srv
+  CartesianPositionCommandTraj.srv
+  CartesianPositionCommandGains.srv
+  HybridImpedanceCommandTrajPos.srv
+  HybridImpedanceCommandTrajForce.srv
+  HybridImpedanceCommandGains.srv
+  HybridImpedanceSwitchForcePos.srv
 )
 
 generate_messages(
