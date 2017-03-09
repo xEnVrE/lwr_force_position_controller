@@ -83,12 +83,15 @@ namespace lwr_controllers {
     traj_a5_.resize(kdl_chain_.getNrOfJoints());
     prev_q_setpoint_.resize(kdl_chain_.getNrOfJoints());
 
-    // advertise CartesianPositionCommand service
-    set_cmd_service_ = n.advertiseService("set_cartesian_position_command", \
-					  &CartesianPositionController::set_cmd, this); 
-
-    get_cmd_service_ = n.advertiseService("get_cartesian_position_command", \
-					  &CartesianPositionController::get_cmd, this); 
+    // advertise CartesianPositionCommand services
+    set_cmd_gains_service_ = n.advertiseService("set_cartpos_gains_cmd", \
+						&CartesianPositionController::set_cmd_gains, this); 
+    set_cmd_traj_service_ = n.advertiseService("set_cartpos_traj_cmd", \
+					       &CartesianPositionController::set_cmd_traj, this); 
+    get_cmd_gains_service_ = n.advertiseService("get_cartpos_gains_cmd", \
+						&CartesianPositionController::get_cmd_gains, this); 
+    get_cmd_traj_service_ = n.advertiseService("get_cartpos_traj_cmd", \
+					       &CartesianPositionController::get_cmd_traj, this); 
 
     // advertise topics
     pub_error_ = n.advertise<lwr_force_position_controllers::CartesianPositionJointsMsg>("error", 1000);
@@ -110,7 +113,7 @@ namespace lwr_controllers {
   {
 
     // set desired quantities
-    time_ = 0;
+    time_ = p2p_traj_duration_;
     for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
       {
 	traj_a0_(i) = joint_handles_[i].getPosition();
@@ -194,33 +197,6 @@ namespace lwr_controllers {
 	///////////////////////////////////////////////////////////////////////////////
       }
 
-    // robust control
-    // w = rho * versor(z)
-    // where z = D' * Q * eta
-    // - D = [0; eye(7)]
-    // - Q: positive define matrix
-    // - eta = [q_error; qdot_error]
-    
-    // Eigen::VectorXd eta, z, w;
-    // Eigen::MatrixXd D, Q;
-    // double rho = 100;
-    
-    // eta = Eigen::VectorXd::Zero(2 * kdl_chain_.getNrOfJoints());
-    // eta.head(kdl_chain_.getNrOfJoints()) = q_error.data;
-    // eta.tail(kdl_chain_.getNrOfJoints()) = qdot_error.data;
-    
-    // Q = Eigen::MatrixXd::Identity(2 * kdl_chain_.getNrOfJoints(), 2 * kdl_chain_.getNrOfJoints());
-    // D = Eigen::MatrixXd::Zero(2 * kdl_chain_.getNrOfJoints(), kdl_chain_.getNrOfJoints());
-    // D.block<7, 7>(7,0) =  Eigen::MatrixXd::Identity(kdl_chain_.getNrOfJoints(), kdl_chain_.getNrOfJoints());
-    
-    // z = D.transpose() * Q * eta;
-    
-    // // avoid chattering
-    // if (z.norm() > 0.001)
-    //   w = rho * z / z.norm();
-    // else
-    //   w = rho * z / 0.001;
-    
     // evaluate B * tau_cmd
     KDL::JntArray B_tau_cmd;
     B_tau_cmd.resize(kdl_chain_.getNrOfJoints());
@@ -275,10 +251,20 @@ namespace lwr_controllers {
     // the force applied on the environment by the end-effector
     wrench_wrist_ = - wrench_wrist_topic;
   }
-
-  bool CartesianPositionController::set_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request &req,\
-					  lwr_force_position_controllers::CartesianPositionCommand::Response &res)
+  
+  bool CartesianPositionController::set_cmd_traj(lwr_force_position_controllers::CartesianPositionCommandTraj::Request &req,\
+						 lwr_force_position_controllers::CartesianPositionCommandTraj::Response &res)
   {
+    if (time_ < p2p_traj_duration_)
+      {
+	res.command.elapsed_time = time_;
+	res.command.accepted = false;
+	res.command.p2p_traj_duration = p2p_traj_duration_;
+
+	return true;
+      }
+    res.command.accepted = true;
+    
     KDL::Vector des_pose = KDL::Vector::Zero();
     KDL::Rotation des_attitude = KDL::Rotation::Identity();
 
@@ -289,33 +275,30 @@ namespace lwr_controllers {
 
     // set the desired attitude requested by the user
     des_attitude = KDL::Rotation::RPY(req.command.roll,\
-				      req.command.pitch,\
-				      req.command.yaw);
-
-    // set the desired gains requested by the user
-    // TEMPORARY: -1 means that the user requested the last gain set
-    if (req.command.kp != -1)
-      kp_ = req.command.kp;
-    if (req.command.kd != -1)
-      kd_ = req.command.kd;
-
-    bool hold_last_qdes_found = req.command.hold_last_qdes_found;
+  				      req.command.pitch,\
+  				      req.command.yaw);
 
     // set p2p_traj_duration
     p2p_traj_duration_ = req.command.p2p_traj_duration;
 
-    if(hold_last_qdes_found == false)
-      // evaluate the new desired configuration 
-      // if requested by the user
-      evaluate_traj_constants(des_pose, des_attitude);
+    // evaluate new trajectory
+    evaluate_traj_constants(des_pose, des_attitude);
 
+    return true;
+
+  }
+
+  bool CartesianPositionController::set_cmd_gains(lwr_force_position_controllers::CartesianPositionCommandGains::Request &req, \
+						  lwr_force_position_controllers::CartesianPositionCommandGains::Response &res)
+  {
+    kp_ = req.command.kp;
+    kd_ = req.command.kd;
     return true;
   }
 
-  bool CartesianPositionController::get_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request &req,\
-					    lwr_force_position_controllers::CartesianPositionCommand::Response &res)
+  bool CartesianPositionController::get_cmd_traj(lwr_force_position_controllers::CartesianPositionCommandTraj::Request &req,\
+						 lwr_force_position_controllers::CartesianPositionCommandTraj::Response &res)
   {
-
     KDL::Frame ee_fk_frame;
     double yaw, pitch, roll;
     KDL::JntArray q;
@@ -337,12 +320,21 @@ namespace lwr_controllers {
     res.command.pitch = pitch;
     res.command.roll = roll;
 
+    // get p2p_traj_duration
+    res.command.p2p_traj_duration = p2p_traj_duration_;
+
+    // get remaining time
+    res.command.elapsed_time = time_;
+
+    return true;
+  }
+
+  bool CartesianPositionController::get_cmd_gains(lwr_force_position_controllers::CartesianPositionCommandGains::Request &req,\
+						  lwr_force_position_controllers::CartesianPositionCommandGains::Response &res)
+  {
     // get desired gain
     res.command.kp = kp_;
     res.command.kd = kd_;
-
-    // get p2p_traj_duration
-    res.command.p2p_traj_duration = p2p_traj_duration_;
 
     return true;
   }
