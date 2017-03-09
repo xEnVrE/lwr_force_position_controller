@@ -35,10 +35,20 @@ namespace lwr_controllers {
     n.getParam("publish_rate", publish_rate_);
       
     // advertise HybridImpedanceCommand service
-    set_cmd_service_ = n.advertiseService("set_hybrid_impedance_command",\
-					  &HybridImpedanceController::set_cmd, this);
-    get_cmd_service_ = n.advertiseService("get_hybrid_impedance_command",\
-					  &HybridImpedanceController::get_cmd, this);
+    set_cmd_traj_pos_service_ = n.advertiseService("set_hybrid_traj_pos_cmd", \
+						   &HybridImpedanceController::set_cmd_traj_pos, this); 
+    set_cmd_traj_force_service_ = n.advertiseService("set_hybrid_traj_force_cmd", \
+						     &HybridImpedanceController::set_cmd_traj_force, this); 
+    set_cmd_gains_service_ = n.advertiseService("set_hybrid_gains_cmd", \
+						&HybridImpedanceController::set_cmd_gains, this); 
+    switch_force_position_z_service_ = n.advertiseService("switch_force_position_z", \
+							  &HybridImpedanceController::switch_force_position_z, this);
+    get_cmd_traj_pos_service_ = n.advertiseService("get_hybrid_traj_pos_cmd", \
+						   &HybridImpedanceController::get_cmd_traj_pos, this); 
+    get_cmd_traj_force_service_ = n.advertiseService("get_hybrid_traj_force_cmd", \
+						     &HybridImpedanceController::get_cmd_traj_force, this); 
+    get_cmd_gains_service_ = n.advertiseService("get_hybrid_gains_cmd", \
+						&HybridImpedanceController::get_cmd_gains, this); 
 
     // instantiate variables
     Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KP;
@@ -81,14 +91,11 @@ namespace lwr_controllers {
     //
 
     // set default trajectory (force and position)
-    set_default_traj();
-
+    set_default_pos_traj();
+    set_default_force_traj();
+    
     // set z position control
     enable_force_ = false;
-
-    // reset the time
-    time_ = 0;
-    time_force_ = 0;
 
     //
     ///////////////////////////////////////////////////////////////
@@ -194,7 +201,7 @@ namespace lwr_controllers {
       }
   }
 
-  void HybridImpedanceController::set_default_traj()
+  void HybridImpedanceController::set_default_pos_traj()
   {
     // get current robot joints configuration q
     KDL::JntArray q;
@@ -214,9 +221,6 @@ namespace lwr_controllers {
     R_ws_ee.GetEulerZYZ(alpha, beta, gamma);
     p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
 
-    ///////////////////////////////
-    p2p_traj_mutex_.lock();
-
     // set position and attitude tajectory constants
     for(int i=0; i<6; i++)
       {
@@ -233,21 +237,24 @@ namespace lwr_controllers {
     prev_pos_setpoint_ << p_ws_ee.x(), p_ws_ee.y(), p_ws_ee.z();
     prev_att_setpoint_ << alpha, beta, gamma;
 
+    // reset the time
+    time_ = p2p_traj_duration_;
+
     p2p_traj_mutex_.unlock();
-    ///////////////////////////////
 
-    ///////////////////////////////
-    force_traj_mutex_.lock();
+  }
 
+  void HybridImpedanceController::set_default_force_traj()
+  {
+    
     // set force trajectory constants
     for(int i = 0; i<3; i++)
       force_ref_const_(i)  = 0;
     force_ref_const_(0) = -0.1;
     prev_fz_setpoint_ = -0.1;
 
-    force_traj_mutex_.unlock();
-    ///////////////////////////////
-
+    // reset the time
+    time_force_ = force_ref_duration_;
   }
 
   void HybridImpedanceController::get_parameters(ros::NodeHandle &n)
@@ -282,9 +289,19 @@ namespace lwr_controllers {
     p_sensor_cp_ = KDL::Vector(x, y, z);
   }
 
-  bool HybridImpedanceController::set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
-					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
+  bool HybridImpedanceController::set_cmd_traj_pos(lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Request &req, \
+						   lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Response &res)
   {
+    if (time_ < p2p_traj_duration_)
+      {
+	res.command.elapsed_time = time_;
+	res.command.accepted = false;
+	res.command.p2p_traj_duration = p2p_traj_duration_;
+
+	return true;
+      }
+    res.command.accepted = true;
+
     Eigen::Vector3d desired_position;
     Eigen::Vector3d desired_attitude;
 
@@ -296,13 +313,6 @@ namespace lwr_controllers {
     desired_attitude(1) = req.command.beta;
     desired_attitude(2) = req.command.gamma;
 
-    // set the desired gains requested by the user
-    Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kp;
-    Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kd; 
-    km_f_ = req.command.km_f;
-    kd_f_ = req.command.kd_f;
-
-    ///////////////////////////////
     p2p_traj_mutex_.lock();
 
     p2p_traj_duration_ = req.command.p2p_traj_duration;
@@ -311,9 +321,23 @@ namespace lwr_controllers {
     time_ = 0;
 
     p2p_traj_mutex_.unlock();
-    //////////////////////////////
-    
-    /////////////////////////////
+
+    return true;
+  }
+
+  bool HybridImpedanceController::set_cmd_traj_force(lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Request &req, \
+						     lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Response &res)
+  {
+    if (time_force_ < force_ref_duration_)
+      {
+	res.command.elapsed_time = time_force_;
+	res.command.accepted = false;
+	res.command.force_ref_duration = force_ref_duration_;
+
+	return true;
+      }
+    res.command.accepted = true;
+
     force_traj_mutex_.lock();
 
     force_ref_duration_ = req.command.force_ref_duration;
@@ -321,27 +345,46 @@ namespace lwr_controllers {
     time_force_ = 0;    
 
     force_traj_mutex_.unlock();
-    ////////////////////////////
-
-    // check if the user selected force control or not
-    if(enable_force_ != req.command.enable_force)
-	set_default_traj();
-
-    enable_force_ = req.command.enable_force;
-
 
     return true;
   }
 
-  bool HybridImpedanceController::get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
-					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
+  bool HybridImpedanceController::switch_force_position_z(lwr_force_position_controllers::HybridImpedanceSwitchForcePos::Request &req, \
+							  lwr_force_position_controllers::HybridImpedanceSwitchForcePos::Response &res)
   {
-    // get gains
-    res.command.kp = Kp_(0, 0);
-    res.command.kd = Kd_(0, 0);
-    res.command.km_f = km_f_;
-    res.command.kd_f = kd_f_;
 
+    p2p_traj_mutex_.lock();
+    
+    set_default_pos_traj();
+    
+    p2p_traj_mutex_.unlock();
+
+    force_traj_mutex_.lock();
+
+    set_default_force_traj();	
+    enable_force_ = req.command.enable_force_z;
+
+    force_traj_mutex_.unlock();
+
+    return true;
+  }
+
+  bool HybridImpedanceController::set_cmd_gains(lwr_force_position_controllers::HybridImpedanceCommandGains::Request &req, \
+						lwr_force_position_controllers::HybridImpedanceCommandGains::Response &res)
+  {
+    // set the desired gains requested by the user
+    Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kp;
+    Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kd; 
+    km_f_ = req.command.km_f;
+    kd_f_ = req.command.kd_f;
+    set_gains_im(req.command.kp_im, req.command.kd_im);
+
+    return true;
+  }
+
+  bool HybridImpedanceController::get_cmd_traj_pos(lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Request &req, \
+						   lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Response &res)
+  {
     // get position
     res.command.x = prev_pos_setpoint_(0);
     res.command.y = prev_pos_setpoint_(1);
@@ -352,13 +395,42 @@ namespace lwr_controllers {
     res.command.alpha = prev_att_setpoint_(0);
     res.command.beta = prev_att_setpoint_(1);
     res.command.gamma = prev_att_setpoint_(2);
-    
+
+    // get elapsed time
+    res.command.elapsed_time = time_;
+
+    return true;
+  }
+
+  bool HybridImpedanceController::get_cmd_traj_force(lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Request &req, \
+						     lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Response &res)
+  {
     // get force
     res.command.forcez = prev_fz_setpoint_;
     res.command.force_ref_duration = force_ref_duration_;
 
-    // get enable_force
-    res.command.enable_force = enable_force_;
+    // get elapsed time
+    res.command.elapsed_time = time_force_;
+
+    return true;
+  }
+
+  bool HybridImpedanceController::get_cmd_gains(lwr_force_position_controllers::HybridImpedanceCommandGains::Request &req, \
+						lwr_force_position_controllers::HybridImpedanceCommandGains::Response &res)
+  {
+    double kp_im, kd_im;
+
+    // get gains
+    res.command.kp = Kp_(0, 0);
+    res.command.kd = Kd_(0, 0);
+    res.command.km_f = km_f_;
+    res.command.kd_f = kd_f_;
+
+    // get internal motion gains
+    get_gains_im(kp_im, kd_im);
+    res.command.kp_im = kp_im;
+    res.command.kd_im = kd_im;
+
     return true;
   }
 

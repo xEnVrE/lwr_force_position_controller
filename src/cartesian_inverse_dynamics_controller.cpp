@@ -34,12 +34,6 @@ namespace lwr_controllers {
     ros::NodeHandle nh;
     nh.getParam("use_simulation", use_simulation_);
 
-    // advertise CartesianInverseCommand service
-    set_cmd_service_ = n.advertiseService("set_cartesian_inverse_command",\
-					  &CartesianInverseDynamicsController::set_cmd, this);
-    get_cmd_service_ = n.advertiseService("get_cartesian_inverse_command",\
-					  &CartesianInverseDynamicsController::get_cmd, this);
-
     // extend the default chain with a fake segment in order to evaluate
     // Jacobians, derivatives of jacobians and forward kinematics with respect to a given reference point
     // (typicallly the tool tip)
@@ -504,27 +498,19 @@ namespace lwr_controllers {
     wrench_wrist_ = - wrench_wrist_topic;
   }
 
-  bool CartesianInverseDynamicsController::set_cmd(lwr_force_position_controllers::CartesianInverseCommand::Request &req,\
-						   lwr_force_position_controllers::CartesianInverseCommand::Response &res)
+  void CartesianInverseDynamicsController::get_gains_im(double& kp, double& kd)
   {
-    // set gains
-    Kp_im_(2,2) = req.command.kp_im;
-    Kp_im_(3,3) = req.command.kp_im;
-    Kp_im_(4,4) = req.command.kp_im;
-    Kp_im_(5,5) = req.command.kp_im;
-    Kd_im_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kd_im;
-
-    return true;
+    kp = Kp_im_(2, 2);
+    kd = Kd_im_(0, 0);
   }
 
-  bool CartesianInverseDynamicsController::get_cmd(lwr_force_position_controllers::CartesianInverseCommand::Request &req,\
-						   lwr_force_position_controllers::CartesianInverseCommand::Response &res)
+  void CartesianInverseDynamicsController::set_gains_im(double kp, double kd)
   {
-    // get gains
-    res.command.kp_im = Kp_im_(2, 2);
-    res.command.kd_im = Kd_im_(0, 0);
-    
-    return true;
+    Kp_im_(2,2) = kp;
+    Kp_im_(3,3) = kp;
+    Kp_im_(4,4) = kp;
+    Kp_im_(5,5) = kp;
+    Kd_im_ = Eigen::Matrix<double, 6, 6>::Identity() * kd;
   }
 
   void CartesianInverseDynamicsController::set_p_wrist_ee(double x, double y, double z)

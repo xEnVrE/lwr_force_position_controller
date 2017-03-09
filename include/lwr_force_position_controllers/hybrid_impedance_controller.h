@@ -2,7 +2,10 @@
 #define LWR_FORCE_POSITION_CONTROLLERS_HYBRID_IMPEDANCE_CONTROLLER_H
 
 #include "cartesian_inverse_dynamics_controller.h"
-#include <lwr_force_position_controllers/HybridImpedanceCommand.h>
+#include <lwr_force_position_controllers/HybridImpedanceCommandTrajPos.h>
+#include <lwr_force_position_controllers/HybridImpedanceCommandTrajForce.h>
+#include <lwr_force_position_controllers/HybridImpedanceCommandGains.h>
+#include <lwr_force_position_controllers/HybridImpedanceSwitchForcePos.h>
 #include <geometry_msgs/WrenchStamped.h>
 #include <boost/thread/mutex.hpp>
 
@@ -20,11 +23,22 @@ namespace lwr_controllers
     void update(const ros::Time& time, const ros::Duration& period);
 
   private:
-    void set_default_traj();
-    bool set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req, \
-		 lwr_force_position_controllers::HybridImpedanceCommand::Response &res);
-    bool get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req, \
-		 lwr_force_position_controllers::HybridImpedanceCommand::Response &res);
+    void set_default_pos_traj();
+    void set_default_force_traj();
+    bool set_cmd_traj_pos(lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Request &req, \
+			  lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Response &res);
+    bool set_cmd_traj_force(lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Request &req, \
+			    lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Response &res);
+    bool set_cmd_gains(lwr_force_position_controllers::HybridImpedanceCommandGains::Request &req, \
+		       lwr_force_position_controllers::HybridImpedanceCommandGains::Response &res);
+    bool get_cmd_traj_pos(lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Request &req, \
+			  lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Response &res);
+    bool get_cmd_traj_force(lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Request &req, \
+			    lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Response &res);
+    bool get_cmd_gains(lwr_force_position_controllers::HybridImpedanceCommandGains::Request &req, \
+		       lwr_force_position_controllers::HybridImpedanceCommandGains::Response &res);
+    bool switch_force_position_z(lwr_force_position_controllers::HybridImpedanceSwitchForcePos::Request &req, \
+				 lwr_force_position_controllers::HybridImpedanceSwitchForcePos::Response &res);
     void get_parameters(ros::NodeHandle &n);
     void set_p_sensor_cp(double x, double y, double z);
     void eval_current_point_to_point_traj(const ros::Duration& period,\
@@ -40,8 +54,13 @@ namespace lwr_controllers
     void publish_data(ros::Publisher& pub, Eigen::VectorXd& vector);
 
     // HybridImpiedanceCommand service
-    ros::ServiceServer set_cmd_service_;
-    ros::ServiceServer get_cmd_service_;
+    ros::ServiceServer set_cmd_traj_pos_service_;
+    ros::ServiceServer set_cmd_traj_force_service_;
+    ros::ServiceServer set_cmd_gains_service_;
+    ros::ServiceServer switch_force_position_z_service_;
+    ros::ServiceServer get_cmd_traj_pos_service_;
+    ros::ServiceServer get_cmd_traj_force_service_;
+    ros::ServiceServer get_cmd_gains_service_;
     
     // hybrid impedance controller (pose)
     Eigen::MatrixXd Kp_, Kd_;
