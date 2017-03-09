@@ -17,6 +17,8 @@
 // GAIN CONSTANTS
 //-------------------------------------
 #define DEFAULT_KP 30
+#define DEFAULT_KP_A5 30
+#define DEFAULT_KP_A6 30
 #define DEFAULT_KD 30
 
 //------------------------------------------------------------------------------
@@ -70,6 +72,8 @@ namespace lwr_controllers {
 
     // set the default gains
     kp_ = DEFAULT_KP;
+    kp_a5_ = DEFAULT_KP_A5;
+    kp_a6_ = DEFAULT_KP_A6;
     kd_ = DEFAULT_KD;
 
     // set default trajectory duration
@@ -154,11 +158,16 @@ namespace lwr_controllers {
     qdot_error.resize(kdl_chain_.getNrOfJoints());
 
     evaluate_traj_des(period);
-    for(size_t i=0; i<joint_handles_.size(); i++)
+    for(size_t i=0; i<joint_handles_.size() ; i++)
       {
 	q_error(i) = traj_des_.q(i) - joint_msr_states_.q(i);
 	qdot_error(i) = traj_des_.qdot(i) - joint_msr_states_.qdot(i);
-	tau_cmd(i) = kp_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
+	if(i == 5)
+	  tau_cmd(i) = kp_a5_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
+	else if (i == 6)
+	  tau_cmd(i) = kp_a6_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
+	else
+	  tau_cmd(i) = kp_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
       }
     
     KDL::JntSpaceInertiaMatrix B;
@@ -292,6 +301,8 @@ namespace lwr_controllers {
 						  lwr_force_position_controllers::CartesianPositionCommandGains::Response &res)
   {
     kp_ = req.command.kp;
+    kp_a5_ = req.command.kp_a5;
+    kp_a6_ = req.command.kp_a6;
     kd_ = req.command.kd;
     return true;
   }
@@ -334,6 +345,8 @@ namespace lwr_controllers {
   {
     // get desired gain
     res.command.kp = kp_;
+    res.command.kp_a5 = kp_a5_;
+    res.command.kp_a6 = kp_a6_;
     res.command.kd = kd_;
 
     return true;

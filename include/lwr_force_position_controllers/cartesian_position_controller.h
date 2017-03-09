@@ -49,7 +49,7 @@ namespace lwr_controllers
     void update_fri_inertia_matrix(Eigen::MatrixXd& fri_B);
     
     // joint position controller
-    double kp_, kd_;
+    double kp_, kp_a5_, kp_a6_, kd_;
    
     // inertia matrix and coriolis
     boost::scoped_ptr<KDL::ChainDynParam> dyn_param_solver_;
