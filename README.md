@@ -17,7 +17,10 @@ In order to run some external packages are required:
 - [__controller_switcher__](https://github.com/xEnVrE/controller_switcher): GUI required to switch controllers and set commands;
 - [__kdljacdot__](https://github.com/xEnVrE/kdljacdot): Jacobian derivative solver from KDL 1.4 (not available in ros up to now);
 - [__kuka-lwr__](https://github.com/CentroEPiaggio/kuka-lwr): description of the Kuka LWR manipulator;
-- [__vito-robot__](https://github.com/CentroEPiaggio/vito-robot): (vito_description only) required for vito robot's torso description and materials.
+- [__vito-robot__](https://github.com/CentroEPiaggio/vito-robot): (vito_description only) required for vito robot's torso description and materials;
+- [__ft-calib__](https://github.com/xEnVrE/ft_calib): FTCalib class from https://github.com/kth-ros-pkg/force_torque_tools exported as ROS library;
+- [__gravity-compensation__](https://github.com/xEnVrE/force_torque_tools/tree/indigo/gravity_compensation): gravity-compensation node;
+- [__qb-interface-node__](https://github.com/xEnVrE/qb_interface_node/tree/imu): qb_interface_node with support for IMU and compatible with the gravity-compensation node.
 
 In order to compile the GUI you also need ros-*-qt-build.
 
@@ -27,3 +30,7 @@ WARNING: in order to run the simulation you MUST set every \<damping\> and \<fri
 to 0.0 and disable the \<collision\> section of the 7-th link.
 
 1. roslaunch lwr_force_position_controllers single_lwr.launch
+
+## How to run using the real robot
+
+1. roslaunch lwr_force_position_controllers single_lwr.launch use_lwr_sim:=false lwr_powered:=true
