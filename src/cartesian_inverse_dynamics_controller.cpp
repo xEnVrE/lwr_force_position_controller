@@ -91,7 +91,7 @@ namespace lwr_controllers {
     Kp_im_(5,5) = DEFAULT_KP_IM_A5;
 
     // subscribe to force/torque sensor topic
-    sub_force_ = n.subscribe("/lwr/ft_sensor_controller/ft_sensor_nog", 1,\
+    sub_force_ = n.subscribe(ft_sensor_topic_name_, 1, \
 			     &CartesianInverseDynamicsController::force_torque_callback, this);
 
     return true;
@@ -512,6 +512,11 @@ namespace lwr_controllers {
     Kp_im_(4,4) = kp_att;
     Kp_im_(5,5) = kp_att;
     Kd_im_ = Eigen::Matrix<double, 6, 6>::Identity() * kd;
+  }
+
+  void CartesianInverseDynamicsController::set_ft_sensor_topic_name(std::string topic)
+  {
+    ft_sensor_topic_name_ = topic;
   }
 
   void CartesianInverseDynamicsController::set_p_wrist_ee(double x, double y, double z)

@@ -274,17 +274,22 @@ namespace lwr_controllers {
     // attitude of the workspace frame w.r.t. vito_anchor frame
     std::vector<double> ws_base_angles;
 
+    // name of the ft_sensor topic
+    std::string ft_sensor_topic_name;
+
     // get parameters form rosparameter server
     n.getParam("p_wrist_ee", p_wrist_ee);
     n.getParam("p_sensor_cp", p_sensor_cp);
     n.getParam("p_base_ws", p_base_ws);
     n.getParam("ws_base_angles", ws_base_angles);
+    n.getParam("ft_sensor_topic_name", ft_sensor_topic_name);
 
     // set internal members
     set_p_wrist_ee(p_wrist_ee.at(0), p_wrist_ee.at(1), p_wrist_ee.at(2));
     set_p_sensor_cp(p_sensor_cp.at(0), p_sensor_cp.at(1), p_sensor_cp.at(2));
     set_p_base_ws(p_base_ws.at(0), p_base_ws.at(1), p_base_ws.at(2));
     set_ws_base_angles(ws_base_angles.at(0), ws_base_angles.at(1), ws_base_angles.at(2));
+    set_ft_sensor_topic_name(ft_sensor_topic_name);
   }
 
   void HybridImpedanceController::set_p_sensor_cp(double x, double y, double z)
