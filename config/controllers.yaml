@@ -50,6 +50,8 @@ lwr:
     # without pen
     # p_wrist_ee: [0, 0, 0.18]
 
+    # with hand
+    #p_wrist_ee: [0, 0, ?]
 
   # Hybrid Impedance Controller 
   # (Spong, Journal of Robotics And Automation, Vol. 4, Issue 5, 1988)
@@ -57,7 +59,6 @@ lwr:
     type: lwr_force_position_controllers/HybridImpedanceController
     root_name: vito_anchor
     tip_name: lwr_7_link
-    internal_motion_controlled_link: lwr_3_link
 
     # with pen
     p_wrist_ee: [0, 0, 0.255]
@@ -67,6 +68,9 @@ lwr:
 
     # without pen
     # p_wrist_ee: [0, 0, 0.18]
+
+    # with hand
+    #p_wrist_ee: [0, 0, ?]
     
     # table + foam
     p_base_ws: [-0.7, 0, 0.05]
