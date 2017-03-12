@@ -77,9 +77,10 @@ lwr:
     
     #  table + wood + foam
     # p_base_ws: [-0.7, 0, 0.075]
-    
-    ft_sensor_topic_name: /lwr/ft_sensor
+
     p_sensor_cp: [0, 0, 0.025]
+    
+    ft_sensor_topic_name: /gravity_compensation/ft_compensated
     ws_base_angles: [0, 0, 0]
     publish_rate: 1000 #Hz
 
