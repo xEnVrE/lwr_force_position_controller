@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   lwr_controllers
   roscpp
   kdljacdot
+  ft_calib
 )
 
 add_definitions (-fpermissive -std=c++11)
@@ -19,20 +20,23 @@ include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 
 add_message_files(
    FILES
-   CartesianPositionCommandMsg.msg
-   CartesianInverseCommandMsg.msg
-   HybridImpedanceCommandMsg.msg
-   FtSensorToolEstimationMsg.msg
+   CartesianPositionCommandTrajMsg.msg
+   CartesianPositionCommandGainsMsg.msg
+   HybridImpedanceCommandTrajPosMsg.msg
+   HybridImpedanceCommandTrajForceMsg.msg
+   HybridImpedanceCommandGainsMsg.msg
+   HybridImpedanceSwitchForcePosMsg.msg
    CartesianPositionJointsMsg.msg
 )
 
 add_service_files(
   FILES
-  CartesianPositionCommand.srv
-  CartesianInverseCommand.srv
-  HybridImpedanceCommand.srv
-  FtSensorToolEstimation.srv
-  FtSensorSetBias.srv
+  CartesianPositionCommandTraj.srv
+  CartesianPositionCommandGains.srv
+  HybridImpedanceCommandTrajPos.srv
+  HybridImpedanceCommandTrajForce.srv
+  HybridImpedanceCommandGains.srv
+  HybridImpedanceSwitchForcePos.srv
 )
 
 generate_messages(
@@ -43,10 +47,10 @@ generate_messages(
   lwr_controllers
 )
 
-
 catkin_package(
   CATKIN_DEPENDS
     kdljacdot
+    # ft_calib
     controller_interface
     lwr_controllers
     kdl_conversions
@@ -56,7 +60,7 @@ catkin_package(
 )
 
 add_library(${PROJECT_NAME}
-  src/ft_sensor_controller.cpp
+  src/ft_sensor_calib_controller.cpp
   src/cartesian_position_controller.cpp	
   src/cartesian_inverse_dynamics_controller.cpp	
   src/hybrid_impedance_controller.cpp
@@ -65,7 +69,6 @@ add_library(${PROJECT_NAME}
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencpp)
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} yaml-cpp)
-
 
 install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})

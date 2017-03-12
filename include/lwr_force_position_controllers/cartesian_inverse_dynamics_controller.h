@@ -12,9 +12,6 @@
 #include <kdl/chainfksolverpos_recursive.hpp>
 #include <kdljacdot/chainjnttojacdotsolver.hpp>
 
-#include <lwr_force_position_controllers/CartesianInverseCommand.h>
-#include <lwr_force_position_controllers/CartesianInverseCommandMsg.h>
-
 namespace lwr_controllers
 {
   class CartesianInverseDynamicsController: public controller_interface::KinematicChainControllerBase<hardware_interface::EffortJointInterface>
@@ -29,7 +26,10 @@ namespace lwr_controllers
     void starting(const ros::Time& time);
     void update(const ros::Time& time, const ros::Duration& period);
 
+    void get_gains_im(double& kp_z, double& kp_att, double& kd);
+    void set_gains_im(double kp_z, double kp_att, double kd);
     void set_p_wrist_ee(double x, double y, double z);
+    void set_ft_sensor_topic_name(std::string topic);
     void set_p_base_ws(double x, double y, double z);
     void set_ws_base_angles(double alpha, double beta, double gamma);
     void set_command(Eigen::VectorXd& commanded_acceleration);
@@ -37,10 +37,6 @@ namespace lwr_controllers
   private:
     void force_torque_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void update_fri_inertia_matrix(Eigen::MatrixXd& fri_B);
-    bool set_cmd(lwr_force_position_controllers::CartesianInverseCommand::Request &req, \
-		 lwr_force_position_controllers::CartesianInverseCommand::Response &res);
-    bool get_cmd(lwr_force_position_controllers::CartesianInverseCommand::Request &req, \
-		 lwr_force_position_controllers::CartesianInverseCommand::Response &res);
 
     // syntax:
     //
@@ -69,34 +65,40 @@ namespace lwr_controllers
     boost::scoped_ptr<KDL::ChainJntToJacSolver> ee_jacobian_solver_, wrist_jacobian_solver_;
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> ee_fk_solver_;
     boost::scoped_ptr<KDL::ChainJntToJacDotSolver> ee_jacobian_dot_solver_;
-    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_jacobian_solver_;
-    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_fk_solver_;
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_a4_jacobian_solver_;
+    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_a4_fk_solver_;
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_a5_jacobian_solver_;
+    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_a5_fk_solver_;
+
     // chain required to move the reference point of jacobians
     KDL::Chain extended_chain_;
     // chain required to control internal motion
-    KDL::Chain im_chain_;
+    KDL::Chain im_a4_chain_;
+    KDL::Chain im_a5_chain_;
 
     // these matrices are sparse and initialized in init()
     Eigen::MatrixXd ws_TA_, ws_TA_dot_;
+    Eigen::MatrixXd base_TA_im_a5_;
 
     // null space controller gains
-    Eigen::Matrix<double, 3, 3> Kp_im_;
-    Eigen::Matrix<double, 3, 3> Kd_im_;
+    Eigen::Matrix<double, 6, 6> Kp_im_;
+    Eigen::Matrix<double, 6, 6> Kd_im_;
 
-    // commands
+    double gamma_im_a5_initial_;
+
+    // commandss
     Eigen::VectorXd tau_fri_;
     Eigen::MatrixXd command_filter_;
 
     // ft sensor subscriber and related wrench
+    std::string ft_sensor_topic_name_;
+
     ros::Subscriber sub_force_;
     KDL::Wrench wrench_wrist_;
 
     // use simulation flag
     bool use_simulation_;
 
-    // CartesianInverseCommand service
-    ros::ServiceServer set_cmd_service_;
-    ros::ServiceServer get_cmd_service_;
   };
 
 } // namespace

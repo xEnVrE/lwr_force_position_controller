@@ -1,8 +1,8 @@
 <library path="lib/liblwr_force_position_controllers">
 
-  <class name="lwr_force_position_controllers/FtSensorController" type="lwr_controllers::FtSensorController" base_class_type="controller_interface::ControllerBase">
+  <class name="lwr_force_position_controllers/FtSensorCalibController" type="lwr_controllers::FtSensorCalibController" base_class_type="controller_interface::ControllerBase">
     <description>
-      Force Torque sensor testing (removing offset, compensating for tool weight, etc.)
+      Force Torque sensor calibration controller
     </description>
   </class>
 

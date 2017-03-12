@@ -2,8 +2,10 @@
 #define LWR_FORCE_POSITION_CONTROLLERS_CARTESIAN_POSITION_CONTROLLER_H
 
 #include <lwr_controllers/KinematicChainControllerBase.h>
-#include <lwr_force_position_controllers/CartesianPositionCommand.h>
-#include <lwr_force_position_controllers/CartesianPositionCommandMsg.h>
+#include <lwr_force_position_controllers/CartesianPositionCommandGains.h>
+#include <lwr_force_position_controllers/CartesianPositionCommandGainsMsg.h>
+#include <lwr_force_position_controllers/CartesianPositionCommandTraj.h>
+#include <lwr_force_position_controllers/CartesianPositionCommandTrajMsg.h>
 #include <geometry_msgs/WrenchStamped.h>
 #include <boost/scoped_ptr.hpp>
 
@@ -34,16 +36,20 @@ namespace lwr_controllers
     void ft_sensor_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void evaluate_traj_constants(KDL::Vector&, KDL::Rotation&);
     void evaluate_traj_des(const ros::Duration& period);
-    bool set_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request&,\
-		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
-    bool get_cmd(lwr_force_position_controllers::CartesianPositionCommand::Request&,\
-		 lwr_force_position_controllers::CartesianPositionCommand::Response&);
+    bool set_cmd_traj(lwr_force_position_controllers::CartesianPositionCommandTraj::Request&, \
+		      lwr_force_position_controllers::CartesianPositionCommandTraj::Response&);
+    bool set_cmd_gains(lwr_force_position_controllers::CartesianPositionCommandGains::Request&, \
+		      lwr_force_position_controllers::CartesianPositionCommandGains::Response&);
+    bool get_cmd_traj(lwr_force_position_controllers::CartesianPositionCommandTraj::Request&,\
+		      lwr_force_position_controllers::CartesianPositionCommandTraj::Response&);
+    bool get_cmd_gains(lwr_force_position_controllers::CartesianPositionCommandGains::Request&,\
+		      lwr_force_position_controllers::CartesianPositionCommandGains::Response&);
     void publish_data(ros::Publisher& pub, KDL::JntArray& array);
     void print_joint_array(KDL::JntArray& array);
     void update_fri_inertia_matrix(Eigen::MatrixXd& fri_B);
     
     // joint position controller
-    double kp_, kd_;
+    double kp_, kp_a5_, kp_a6_, kd_;
    
     // inertia matrix and coriolis
     boost::scoped_ptr<KDL::ChainDynParam> dyn_param_solver_;
@@ -62,6 +68,7 @@ namespace lwr_controllers
     // s(t) = a5 * t^5 + a4 * t^4 + a3 * t^3 + a0
     KDL::JntArrayAcc traj_des_;
     KDL::JntArray traj_a0_, traj_a3_, traj_a4_, traj_a5_;
+    KDL::JntArray prev_q_setpoint_;
     double time_;
     double p2p_traj_duration_;
 
@@ -70,8 +77,10 @@ namespace lwr_controllers
     KDL::Wrench wrench_wrist_;
 
     // CartesianPositionCommand services
-    ros::ServiceServer set_cmd_service_;
-    ros::ServiceServer get_cmd_service_;
+    ros::ServiceServer set_cmd_gains_service_;
+    ros::ServiceServer set_cmd_traj_service_;
+    ros::ServiceServer get_cmd_gains_service_;
+    ros::ServiceServer get_cmd_traj_service_;
 
     // use simulation flag
     bool use_simulation_;

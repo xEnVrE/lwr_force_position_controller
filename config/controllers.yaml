@@ -28,16 +28,14 @@ lwr:
       - lwr_a6_joint_stiffness
 
 ## OTHER CUSTOM CONTROLLERS LEFT HERE AS EXAMPLES
-  # FtSensor Controller
-  ft_sensor_controller:
-    type: lwr_force_position_controllers/FtSensorController
+  # FtSensorCalib Controller
+  ft_sensor_calib_controller:
+    type: lwr_force_position_controllers/FtSensorCalibController
     root_name: vito_anchor
     tip_name: lwr_7_link
     topic_name: /my_sensor/ft_sensor_hw/my_sensor
-    ft_sensor_bias: [0, 0, 0, 0, 0, 0]
-    base_tool_weight_com: [0, 0, 0, 0, 0, 0]
-    p_wrist_toolcom: [0, 0, 0]
-    publish_rate: 500 #Hz
+    calibration_loop_rate: 500.0
+    recover_existing_data: false
 
   # Cartesian Position Controller
   cartesian_position_controller:
@@ -60,10 +58,13 @@ lwr:
     root_name: vito_anchor
     tip_name: lwr_7_link
     internal_motion_controlled_link: lwr_3_link
-    
+
     # with pen
     p_wrist_ee: [0, 0, 0.255]
     
+    # without pen
+    # p_wrist_ee: [0, 0, 0.18]
+
     # without pen
     # p_wrist_ee: [0, 0, 0.18]
     
@@ -73,6 +74,8 @@ lwr:
     #  table + wood + foam
     # p_base_ws: [-0.7, 0, 0.075]
     
+    ft_sensor_topic_name: /lwr/ft_sensor
+    p_sensor_cp: [0, 0, 0.025]
     ws_base_angles: [0, 0, 0]
     publish_rate: 1000 #Hz
 

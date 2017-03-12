@@ -4,14 +4,11 @@
 #include <angles/angles.h>
 #include <geometry_msgs/WrenchStamped.h>
 
-#define DEFAULT_KP 20
+#define DEFAULT_KP_POS 20
+#define DEFAULT_KP_ATT 20
 #define DEFAULT_KD 20
 #define DEFAULT_KM_F 1
 #define DEFAULT_KD_F 25
-#define DEFAULT_CIRCLE_FREQ 0.1
-#define DEFAULT_CIRCLE_RADIUS 0.1
-#define DEFAULT_CIRCLE_CENTER_X 0
-#define DEFAULT_CIRCLE_CENTER_Y 0
 #define DEFAULT_P2P_TRAJ_DURATION 5.0
 #define DEFAULT_FORCE_TRAJ_DURATION 2.0
 #define P2P_COEFF_3 10.0
@@ -39,13 +36,25 @@ namespace lwr_controllers {
     n.getParam("publish_rate", publish_rate_);
       
     // advertise HybridImpedanceCommand service
-    set_cmd_service_ = n.advertiseService("set_hybrid_impedance_command",\
-					  &HybridImpedanceController::set_cmd, this);
-    get_cmd_service_ = n.advertiseService("get_hybrid_impedance_command",\
-					  &HybridImpedanceController::get_cmd, this);
+    set_cmd_traj_pos_service_ = n.advertiseService("set_hybrid_traj_pos_cmd", \
+						   &HybridImpedanceController::set_cmd_traj_pos, this); 
+    set_cmd_traj_force_service_ = n.advertiseService("set_hybrid_traj_force_cmd", \
+						     &HybridImpedanceController::set_cmd_traj_force, this); 
+    set_cmd_gains_service_ = n.advertiseService("set_hybrid_gains_cmd", \
+						&HybridImpedanceController::set_cmd_gains, this); 
+    switch_force_position_z_service_ = n.advertiseService("switch_force_position_z", \
+							  &HybridImpedanceController::switch_force_position_z, this);
+    get_cmd_traj_pos_service_ = n.advertiseService("get_hybrid_traj_pos_cmd", \
+						   &HybridImpedanceController::get_cmd_traj_pos, this); 
+    get_cmd_traj_force_service_ = n.advertiseService("get_hybrid_traj_force_cmd", \
+						     &HybridImpedanceController::get_cmd_traj_force, this); 
+    get_cmd_gains_service_ = n.advertiseService("get_hybrid_gains_cmd", \
+						&HybridImpedanceController::get_cmd_gains, this); 
 
     // instantiate variables
-    Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KP;
+    Kp_ = Eigen::Matrix<double, 6, 6>::Identity();
+    Kp_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity() * DEFAULT_KP_POS;
+    Kp_.block<3,3>(3,3) = Eigen::Matrix<double, 3, 3>::Identity() * DEFAULT_KP_ATT;
     Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KD; 
     p2p_trj_const_ = Eigen::MatrixXf(4, 6);
     force_ref_const_ = Eigen::VectorXf(3);
@@ -53,11 +62,6 @@ namespace lwr_controllers {
     // set defaults
     km_f_ = DEFAULT_KM_F;
     kd_f_ = DEFAULT_KD_F;
-    circle_trj_ = false;
-    circle_trj_frequency_ = DEFAULT_CIRCLE_FREQ;
-    circle_trj_radius_ = DEFAULT_CIRCLE_RADIUS;
-    circle_trj_center_x_ = DEFAULT_CIRCLE_CENTER_X;
-    circle_trj_center_y_ = DEFAULT_CIRCLE_CENTER_Y;
     p2p_traj_duration_ = DEFAULT_P2P_TRAJ_DURATION;
     force_ref_duration_ = DEFAULT_FORCE_TRAJ_DURATION;
 
@@ -89,49 +93,12 @@ namespace lwr_controllers {
     ///////////////////////////////////////////////////////////////
     //
 
-    // get current robot joints configuration q
-    KDL::JntArray q;
-    q.resize(kdl_chain_.getNrOfJoints());
-    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
-	q(i) = joint_handles_[i].getPosition();
-
-    // forward kinematics
-    KDL::Frame ee_fk_frame;
-    ee_fk_solver_->JntToCart(q, ee_fk_frame);
-
-    // evaluate current cartesian configuration
-    KDL::Rotation R_ws_ee;
-    KDL::Vector p_ws_ee;
-    double yaw, pitch, roll;
-    R_ws_ee = R_ws_base_ * ee_fk_frame.M;
-    R_ws_ee.GetEulerZYX(yaw, pitch, roll);
-    p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
-
-    // set position and attitude tajectory constants
-    for(int i=0; i<6; i++)
-      {
-	p2p_trj_const_(1, i) = 0;
-	p2p_trj_const_(2, i) = 0;
-	p2p_trj_const_(3, i) = 0;
-      }
-
-    for(int i=0; i<2; i++)
-      p2p_trj_const_(0, i) = p_ws_ee.data[i];
-    p2p_trj_const_(0, 3) = yaw;
-    p2p_trj_const_(0, 4) = pitch;
-    p2p_trj_const_(0, 5) = roll;
-    prev_pos_setpoint_ << p_ws_ee.x(), p_ws_ee.y(), 0.2;
-    prev_att_setpoint_ << yaw, pitch, roll;
-
-    // set force trajectory constants
-    for(int i = 0; i<3; i++)
-      force_ref_const_(i)  = 0;
-    force_ref_const_(0) = -0.1;
-    prev_fz_setpoint_ = -0.1;
-
-    // reset the time
-    time_ = 0;
-    time_force_ = 0;
+    // set default trajectory (force and position)
+    set_default_pos_traj();
+    set_default_force_traj();
+    
+    // set z position control
+    enable_force_ = false;
 
     //
     ///////////////////////////////////////////////////////////////
@@ -154,7 +121,7 @@ namespace lwr_controllers {
     // transform the ft_sensor wrench 
     // move the reference point from the wrist to the tool tip and project in workspace basis
 
-    KDL::Frame force_transformation(R_ws_ee_, R_ws_ee_ * (-p_wrist_ee_));
+    KDL::Frame force_transformation(R_ws_ee_, R_ws_ee_ * (-p_sensor_cp_));
     KDL::Wrench ws_F_ee;
     ws_F_ee = force_transformation * wrench_wrist_;
 
@@ -183,7 +150,7 @@ namespace lwr_controllers {
     Eigen::VectorXd acc_cmd = Eigen::VectorXd(6);
 
     // position controlled DoF
-    // ws_x ws_y R_ee_ws_(yaw, pitch, roll) 
+    // ws_x ws_y R_ee_ws_(alpha, beta, gamma) 
     acc_cmd = Kp_ * err_x + Kd_ * (xdot_des - ws_xdot_) + xdotdot_des;
     acc_cmd(0) = acc_cmd(0) - ws_F_ee.force.x();
     acc_cmd(1) = acc_cmd(1) - ws_F_ee.force.y();
@@ -193,8 +160,12 @@ namespace lwr_controllers {
 
     // force controlled DoF
     // ws_Fz
-    double err_force = fz_des - ws_F_ee.force.z();
-    acc_cmd(2) = - kd_f_ * ws_xdot_(2) + km_f_ * err_force;
+    double err_force;
+    if (enable_force_)
+      {
+	err_force = fz_des - ws_F_ee.force.z();
+	acc_cmd(2) = - kd_f_ * ws_xdot_(2) + km_f_ * err_force;
+      }
 
     //
     /////////////////////////////////////////////////////////////////////
@@ -216,11 +187,77 @@ namespace lwr_controllers {
 	publish_data(pub_force_, ws_F_ee);
 	publish_data(pub_force_des_, KDL::Wrench(KDL::Vector(0, 0, fz_des),\
 						 KDL::Vector(0, 0, 0)));
-	Eigen::VectorXd errors;
-	errors = err_x;
-	errors(2) = err_force;
-	publish_data(pub_error_, errors);
+
+	if(enable_force_)
+	  {
+	    Eigen::VectorXd errors;
+	    errors = err_x;
+	    errors(2) = err_force;
+	    publish_data(pub_error_, errors);
+	  }
+	else
+	  {
+	    Eigen::VectorXd errors;
+	    errors = err_x;
+	    publish_data(pub_error_, errors);
+	  }
       }
+  }
+
+  void HybridImpedanceController::set_default_pos_traj()
+  {
+    // get current robot joints configuration q
+    KDL::JntArray q;
+    q.resize(kdl_chain_.getNrOfJoints());
+    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
+      q(i) = joint_handles_[i].getPosition();
+    
+    // forward kinematics
+    KDL::Frame ee_fk_frame;
+    ee_fk_solver_->JntToCart(q, ee_fk_frame);
+    
+    // evaluate current cartesian configuration
+    KDL::Rotation R_ws_ee;
+    KDL::Vector p_ws_ee;
+    double alpha, beta, gamma;
+    R_ws_ee = R_ws_base_ * ee_fk_frame.M;
+    R_ws_ee.GetEulerZYZ(alpha, beta, gamma);
+    p_ws_ee = R_ws_base_ * (ee_fk_frame.p - p_base_ws_);
+
+    // set position and attitude tajectory constants
+    for(int i=0; i<6; i++)
+      {
+	p2p_trj_const_(1, i) = 0;
+	p2p_trj_const_(2, i) = 0;
+	p2p_trj_const_(3, i) = 0;
+      }
+
+    for(int i=0; i<3; i++)
+      p2p_trj_const_(0, i) = p_ws_ee.data[i];
+    p2p_trj_const_(0, 3) = alpha;
+    p2p_trj_const_(0, 4) = beta;
+    p2p_trj_const_(0, 5) = gamma;
+    prev_pos_setpoint_ << p_ws_ee.x(), p_ws_ee.y(), p_ws_ee.z();
+    prev_att_setpoint_ << alpha, beta, gamma;
+
+    // reset the time
+    time_ = p2p_traj_duration_;
+
+    p2p_traj_mutex_.unlock();
+
+  }
+
+  void HybridImpedanceController::set_default_force_traj()
+  {
+    
+    // set force trajectory constants
+    for(int i = 0; i<3; i++)
+      force_ref_const_(i)  = 0;
+    force_ref_const_(0) = -0.1;
+    prev_fz_setpoint_ = -0.1;
+
+    // reset the time
+    time_force_ = force_ref_duration_;
   }
 
   void HybridImpedanceController::get_parameters(ros::NodeHandle &n)
@@ -228,55 +265,62 @@ namespace lwr_controllers {
     // vector from the wrist to the tool tip (projected in lwr_link_7 frame)
     std::vector<double> p_wrist_ee;
 
+    // vector from the sensor to the contact point
+    std::vector<double> p_sensor_cp;
+
     // vector from vito_anchor to the workspace (projected in world frame)
     std::vector<double> p_base_ws;
 
     // attitude of the workspace frame w.r.t. vito_anchor frame
     std::vector<double> ws_base_angles;
 
+    // name of the ft_sensor topic
+    std::string ft_sensor_topic_name;
+
     // get parameters form rosparameter server
     n.getParam("p_wrist_ee", p_wrist_ee);
+    n.getParam("p_sensor_cp", p_sensor_cp);
     n.getParam("p_base_ws", p_base_ws);
     n.getParam("ws_base_angles", ws_base_angles);
+    n.getParam("ft_sensor_topic_name", ft_sensor_topic_name);
 
     // set internal members
     set_p_wrist_ee(p_wrist_ee.at(0), p_wrist_ee.at(1), p_wrist_ee.at(2));
+    set_p_sensor_cp(p_sensor_cp.at(0), p_sensor_cp.at(1), p_sensor_cp.at(2));
     set_p_base_ws(p_base_ws.at(0), p_base_ws.at(1), p_base_ws.at(2));
     set_ws_base_angles(ws_base_angles.at(0), ws_base_angles.at(1), ws_base_angles.at(2));
+    set_ft_sensor_topic_name(ft_sensor_topic_name);
   }
 
-  bool HybridImpedanceController::set_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
-					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
+  void HybridImpedanceController::set_p_sensor_cp(double x, double y, double z)
   {
+    p_sensor_cp_ = KDL::Vector(x, y, z);
+  }
+
+  bool HybridImpedanceController::set_cmd_traj_pos(lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Request &req, \
+						   lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Response &res)
+  {
+    if (time_ < p2p_traj_duration_)
+      {
+	res.command.elapsed_time = time_;
+	res.command.accepted = false;
+	res.command.p2p_traj_duration = p2p_traj_duration_;
+
+	return true;
+      }
+    res.command.accepted = true;
+
     Eigen::Vector3d desired_position;
     Eigen::Vector3d desired_attitude;
 
     // set requested position and attitude
     desired_position(0) = req.command.x;
     desired_position(1) = req.command.y;
-    desired_attitude(0) = req.command.yaw;
-    desired_attitude(1) = req.command.pitch;
-    desired_attitude(2) = req.command.roll;
+    desired_position(2) = req.command.z;
+    desired_attitude(0) = req.command.alpha;
+    desired_attitude(1) = req.command.beta;
+    desired_attitude(2) = req.command.gamma;
 
-    // // set requested circular trajectory parameters
-    // circle_trj_ = req.command.circle_trj;
-    // circle_trj_frequency_ = req.command.frequency;
-    // circle_trj_radius_ = req.command.radius;
-    // circle_trj_center_x_ = req.command.center_x;
-    // circle_trj_center_y_ = req.command.center_y;
-
-    // set the desired gains requested by the user
-    // TEMPORARY: -1 means that the user requested the last gain set
-    if (req.command.kp != -1)
-      Kp_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kp;
-    if (req.command.kd != -1)
-      Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kd; 
-    if (req.command.km_f != -1)
-      km_f_ = req.command.km_f;
-    if (req.command.kd_f != -1)
-      kd_f_ = req.command.kd_f;
-
-    ///////////////////////////////
     p2p_traj_mutex_.lock();
 
     p2p_traj_duration_ = req.command.p2p_traj_duration;
@@ -285,9 +329,23 @@ namespace lwr_controllers {
     time_ = 0;
 
     p2p_traj_mutex_.unlock();
-    //////////////////////////////
-    
-    /////////////////////////////
+
+    return true;
+  }
+
+  bool HybridImpedanceController::set_cmd_traj_force(lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Request &req, \
+						     lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Response &res)
+  {
+    if (time_force_ < force_ref_duration_)
+      {
+	res.command.elapsed_time = time_force_;
+	res.command.accepted = false;
+	res.command.force_ref_duration = force_ref_duration_;
+
+	return true;
+      }
+    res.command.accepted = true;
+
     force_traj_mutex_.lock();
 
     force_ref_duration_ = req.command.force_ref_duration;
@@ -295,40 +353,94 @@ namespace lwr_controllers {
     time_force_ = 0;    
 
     force_traj_mutex_.unlock();
-    ////////////////////////////
 
     return true;
   }
 
-  bool HybridImpedanceController::get_cmd(lwr_force_position_controllers::HybridImpedanceCommand::Request &req,\
-					  lwr_force_position_controllers::HybridImpedanceCommand::Response &res)
+  bool HybridImpedanceController::switch_force_position_z(lwr_force_position_controllers::HybridImpedanceSwitchForcePos::Request &req, \
+							  lwr_force_position_controllers::HybridImpedanceSwitchForcePos::Response &res)
   {
-    // get gains
-    res.command.kp = Kp_(0, 0);
-    res.command.kd = Kd_(0, 0);
-    res.command.km_f = km_f_;
-    res.command.kd_f = kd_f_;
 
+    p2p_traj_mutex_.lock();
+    
+    set_default_pos_traj();
+    
+    p2p_traj_mutex_.unlock();
+
+    force_traj_mutex_.lock();
+
+    set_default_force_traj();	
+    enable_force_ = req.command.enable_force_z;
+
+    force_traj_mutex_.unlock();
+
+    return true;
+  }
+
+  bool HybridImpedanceController::set_cmd_gains(lwr_force_position_controllers::HybridImpedanceCommandGains::Request &req, \
+						lwr_force_position_controllers::HybridImpedanceCommandGains::Response &res)
+  {
+    // set the desired gains requested by the user
+    Kp_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity() * req.command.kp_pos;
+    Kp_.block<3,3>(3,3) = Eigen::Matrix<double, 3, 3>::Identity() * req.command.kp_att;
+    Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kd; 
+    km_f_ = req.command.km_f;
+    kd_f_ = req.command.kd_f;
+    set_gains_im(req.command.kp_z_im, req.command.kp_att_im, req.command.kd_im);
+
+    return true;
+  }
+
+  bool HybridImpedanceController::get_cmd_traj_pos(lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Request &req, \
+						   lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Response &res)
+  {
     // get position
     res.command.x = prev_pos_setpoint_(0);
     res.command.y = prev_pos_setpoint_(1);
+    res.command.z = prev_pos_setpoint_(2);
     res.command.p2p_traj_duration = p2p_traj_duration_;
 
     // get attitude
-    res.command.yaw = prev_att_setpoint_(0);
-    res.command.pitch = prev_att_setpoint_(1);
-    res.command.roll = prev_att_setpoint_(2);
-    
+    res.command.alpha = prev_att_setpoint_(0);
+    res.command.beta = prev_att_setpoint_(1);
+    res.command.gamma = prev_att_setpoint_(2);
+
+    // get elapsed time
+    res.command.elapsed_time = time_;
+
+    return true;
+  }
+
+  bool HybridImpedanceController::get_cmd_traj_force(lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Request &req, \
+						     lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Response &res)
+  {
     // get force
     res.command.forcez = prev_fz_setpoint_;
     res.command.force_ref_duration = force_ref_duration_;
 
-    // get circle trajectory
-    res.command.circle_trj = circle_trj_;
-    res.command.frequency = circle_trj_frequency_;
-    res.command.radius = circle_trj_radius_;
-    res.command.center_x = circle_trj_center_x_;
-    res.command.center_y = circle_trj_center_y_;
+    // get elapsed time
+    res.command.elapsed_time = time_force_;
+
+    return true;
+  }
+
+  bool HybridImpedanceController::get_cmd_gains(lwr_force_position_controllers::HybridImpedanceCommandGains::Request &req, \
+						lwr_force_position_controllers::HybridImpedanceCommandGains::Response &res)
+  {
+    double kp_z_im, kp_att_im, kd_im;
+
+    // get gains
+    res.command.kp_pos = Kp_(0, 0);
+    res.command.kp_att = Kp_(3, 3);
+    res.command.kd = Kd_(0, 0);
+    res.command.km_f = km_f_;
+    res.command.kd_f = kd_f_;
+
+    // get internal motion gains
+    get_gains_im(kp_z_im, kp_att_im, kd_im);
+    res.command.kp_z_im = kp_z_im;
+    res.command.kp_att_im = kp_att_im;
+    res.command.kd_im = kd_im;
 
     return true;
   }
@@ -398,7 +510,7 @@ namespace lwr_controllers {
     constant_2 = P2P_COEFF_5 / pow(duration, 5);
 
     // evaluate constants for x and y trajectories
-    for (int i=0; i<2; i++)
+    for (int i=0; i<3; i++)
       {
 	double error = desired_position(i) - prev_pos_setpoint_(i);
 	p2p_trj_const_(0, i) = prev_pos_setpoint_(i);
@@ -408,15 +520,15 @@ namespace lwr_controllers {
       }
     prev_pos_setpoint_ = desired_position;
 
-    // evaluate constants yaw, pitch and roll trajectories
-    double yaw_cmd, pitch_cmd, roll_cmd;
-    KDL::Rotation::EulerZYX(desired_attitude(0),
+    // evaluate constants alpha, beta and gamma trajectories
+    double alpha_cmd, beta_cmd, gamma_cmd;
+    KDL::Rotation::EulerZYZ(desired_attitude(0),
 			    desired_attitude(1),
-			    desired_attitude(2)).GetEulerZYX(yaw_cmd,\
-							     pitch_cmd,
-							     roll_cmd);
+			    desired_attitude(2)).GetEulerZYZ(alpha_cmd,\
+							     beta_cmd,
+							     gamma_cmd);
     Eigen::Vector3d des_attitude_fixed;
-    des_attitude_fixed << yaw_cmd, pitch_cmd, roll_cmd;
+    des_attitude_fixed << alpha_cmd, beta_cmd, gamma_cmd;
     for (int i=0; i<3; i++)
       {
 
@@ -429,33 +541,6 @@ namespace lwr_controllers {
     prev_att_setpoint_ = des_attitude_fixed;
 
   }
-
-  // void HybridImpedanceController::eval_current_circular_traj(const ros::Duration& period)
-  // {
-  //   // evaluate the circular trajectory
-  //   time_ = time_ + period.toSec();
-  //   double f = circle_trj_frequency_;
-  //   double omega = 2 * M_PI * f;
-  //   double rho = circle_trj_radius_;
-  //   double x_trj = circle_trj_center_x_ + rho * cos(omega * time_);
-  //   double y_trj = circle_trj_center_y_ + rho * sin(omega * time_);
-  //   double dx_trj = -omega * rho * sin(omega * time_);
-  //   double dy_trj = omega * rho * cos(omega * time_);
-  //   double ddx_trj = -omega * omega * rho * cos(omega * time_);
-  //   double ddy_trj = -omega * omega * rho * sin(omega * time_);
-
-  //   // set the position
-  //   x_des_(0) = x_trj;
-  //   x_des_(1) = y_trj;
-
-  //   // set the velocity
-  //   xdot_des_(0) = dx_trj;
-  //   xdot_des_(1) = dy_trj;
-
-  //   // set the acceleration
-  //   xdotdot_des_(0) = ddx_trj;
-  //   xdotdot_des_(1) = ddy_trj;
-  // }
 
   void HybridImpedanceController::publish_data(ros::Publisher& pub, KDL::Wrench wrench)
   {
