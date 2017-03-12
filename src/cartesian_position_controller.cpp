@@ -106,7 +106,7 @@ namespace lwr_controllers {
 	// subscribe to force/torque sensor topic
 	// (simulation only since it is required to compensate for the mass tool,
 	// the real kuka compensate for mass tool internally)
-	sub_force_ = n.subscribe("/lwr/ft_sensor_controller/ft_sensor_alt", 1,\
+	sub_force_ = n.subscribe("/lwr/ft_sensor", 1,\
 				 &CartesianPositionController::ft_sensor_callback, this);
       }
 	

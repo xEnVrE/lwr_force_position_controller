@@ -65,7 +65,7 @@
 
 	<!-- load moveit configuration -->
 	<group if="$(arg load_moveit)">
-		<include file="$(find single_lwr_moveit)/launch/move_group.launch">
+		<include file="$(find vito_moveit_configuration)/launch/move_group.launch">
 			<arg name="allow_trajectory_execution" value="true"/>  
 			<arg name="fake_execution" value="false"/>
 			<arg name="info" value="true"/>
@@ -90,6 +90,12 @@
 	<!-- load all controller configurations to rosparam server -->
 	<rosparam file="$(find lwr_force_position_controllers)/config/controllers.yaml" command="load"/>
 
+	<!-- load force torque sensor calibration poses to rosparam server -->
+	<rosparam file="$(find lwr_force_position_controllers)/config/ft_calib_poses.yaml" command="load"/>
+
+	<!-- load force torque sensor calibration configurations to rosparam server -->
+	<rosparam file="$(find lwr_force_position_controllers)/config/ft_calib_q.yaml" command="load"/>
+
 	<!-- real robot and controllers -->
 	<group ns="lwr">
 		<group if="$(arg lwr_powered)">
@@ -106,7 +112,7 @@
 		</group>
 
 		<!-- spawn only desired controllers in current namespace -->
-		<node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen"  args="joint_state_controller arm_state_controller ft_sensor_controller $(arg controllers) --shutdown-timeout 2"/>
+		<node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen"  args="joint_state_controller arm_state_controller ft_sensor_calib_controller $(arg controllers) --shutdown-timeout 2"/>
 
 		<node name="controller_stopper" pkg="controller_manager" type="spawner" args="--stopped $(arg stopped_controllers) --shutdown-timeout 2"/>
 
