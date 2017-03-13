@@ -8,6 +8,7 @@
 #include <angles/angles.h>
 #include <eigen_conversions/eigen_kdl.h>
 #include <math.h>
+#include <ros/package.h>
 
 #include <lwr_force_position_controllers/cartesian_position_controller.h>
 
@@ -96,6 +97,8 @@ namespace lwr_controllers {
 						&CartesianPositionController::get_cmd_gains, this); 
     get_cmd_traj_service_ = n.advertiseService("get_cartpos_traj_cmd", \
 					       &CartesianPositionController::get_cmd_traj, this); 
+    save_debug_data_service_ = n.advertiseService("save_debug_data",\
+						  &CartesianPositionController::save_debug_data, this);
 
     // advertise topics
     pub_error_ = n.advertise<lwr_force_position_controllers::CartesianPositionJointsMsg>("error", 1000);
@@ -109,6 +112,8 @@ namespace lwr_controllers {
 	sub_force_ = n.subscribe("/lwr/ft_sensor", 1,\
 				 &CartesianPositionController::ft_sensor_callback, this);
       }
+
+    B_.resize(kdl_chain_.getNrOfJoints());
 	
     return true;
   }
@@ -149,7 +154,7 @@ namespace lwr_controllers {
 
     Eigen::MatrixXd fri_B (joint_handles_.size(), joint_handles_.size());
     update_fri_inertia_matrix(fri_B);
-  
+      
     // compute control law
     KDL::JntArray tau_cmd;
     KDL::JntArray q_error, qdot_error;
@@ -225,6 +230,15 @@ namespace lwr_controllers {
 	joint_damping_handles_[i].setCommand(0);
 	joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
       }
+
+    // TEMPORARY
+    mutex_data_.lock();
+    B_ = B;
+    fri_B_ = fri_B;
+    tau_cmd_ = tau_cmd;
+    B_tau_cmd_ = B_tau_cmd;
+    mutex_data_.unlock();
+    //
  
     if(time > last_publish_time_ + ros::Duration(1.0 / publish_rate_))
       {
@@ -443,6 +457,45 @@ namespace lwr_controllers {
     
     std::cout<<"*******************************"<<std::endl;
   }
+
+  bool CartesianPositionController::save_debug_data(std_srvs::Empty::Request&, \
+						    std_srvs::Empty::Response&)
+  {
+    // TEMPORARY
+    std::string filename = ros::package::getPath("lwr_force_position_controllers") + \
+      "/config/data.txt";
+
+    std::ofstream data_file;
+    Eigen::MatrixXd B, fri_B;
+    Eigen::VectorXd tau, B_tau;
+
+    mutex_data_.lock();
+    B = B_.data;
+    fri_B = fri_B_;
+    tau = tau_cmd_.data;
+    B_tau = B_tau_cmd_.data;
+    mutex_data_.unlock();
+
+    data_file.open (filename, std::ios::out | std::ios::app);
+
+    data_file << "B KDL" << std::endl;
+    data_file << B << std::endl << std::endl;
+
+    data_file << "B FRI" << std::endl;
+    data_file << fri_B << std::endl << std::endl;
+
+    data_file << "tau" << std::endl;
+    data_file << tau << std::endl << std::endl;
+
+    data_file << "B * tau" << std::endl;
+    data_file << B_tau << std::endl << std::endl;
+
+    data_file.close();
+
+    return true;
+    //
+  }
+
 
 }// namespace
 
