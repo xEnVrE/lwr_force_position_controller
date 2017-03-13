@@ -116,7 +116,7 @@ namespace lwr_controllers {
     traj_msg.joint_names.push_back("lwr_a6_joint");
     for (int i = 0; i < kdl_chain_.getNrOfJoints(); ++i)
       point.positions.push_back(q_des.at(i));
-    point.time_from_start = ros::Duration(1);
+    point.time_from_start = ros::Duration(5);
     traj_msg.points.push_back(point);
     pub_joint_traj_ctl_.publish(traj_msg);
   }
