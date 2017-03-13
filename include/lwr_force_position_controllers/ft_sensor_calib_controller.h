@@ -35,6 +35,10 @@ namespace lwr_controllers
 
     bool save_calib_data(std_srvs::Empty::Request&,\
 		      std_srvs::Empty::Response&);
+    bool load_calib_data();
+
+    bool start_compensation(std_srvs::Empty::Request&,\
+			    std_srvs::Empty::Response&);
     void recover_existing_data();
     void save_calib_meas(KDL::Vector gravity, KDL::Wrench ft_wrench_avg, int index);
 
@@ -42,8 +46,13 @@ namespace lwr_controllers
 		      std_srvs::Empty::Response&);
     void add_measurement(KDL::Vector gravity_ft, KDL::Wrench ft_raw_avg);
 
+    void publish_data(KDL::Wrench wrench, ros::Publisher& pub);
+
 
     KDL::Wrench ft_wrench_raw_;
+    KDL::Wrench offset_kdl_;
+    KDL::Wrench base_tool_weight_com_;
+    KDL::Vector p_sensor_tool_com_kdl_;
 
     boost::scoped_ptr<KDL::ChainIkSolverPos_LMA> ik_solver_;
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> fk_solver_;
@@ -57,18 +66,27 @@ namespace lwr_controllers
     ros::ServiceServer move_next_calib_pose_service_;
     ros::ServiceServer do_estimation_step_service_;
     ros::ServiceServer save_calib_data_service_;
+    ros::ServiceServer start_compensation_service_;
+
     ros::Subscriber sub_ft_sensor_;
     ros::Publisher pub_joint_traj_ctl_;
+    ros::Publisher pub_ft_sensor_no_offset_;
+    ros::Publisher pub_ft_sensor_no_gravity_; 
     
     Eigen::Vector3d p_sensor_tool_com_;
     Eigen::Vector3d ft_offset_force_;
     Eigen::Vector3d ft_offset_torque_;
 
-    double tool_mass_;
     double calibration_loop_rate_;
+    double publish_rate_;
+    double tool_mass_;
 
     int pose_counter_;
     int number_of_poses_;
+
+    bool do_compensation_;
+
+    ros::Time last_publish_time_;
   };
 
 } // namespace

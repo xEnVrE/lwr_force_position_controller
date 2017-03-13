@@ -36,6 +36,7 @@ lwr:
     topic_name: /my_sensor/ft_sensor_hw/my_sensor
     calibration_loop_rate: 500.0
     recover_existing_data: false
+    publish_rate: 1000 #Hz
 
   # Cartesian Position Controller
   cartesian_position_controller:
@@ -45,13 +46,13 @@ lwr:
     publish_rate: 1000 #Hz
 
     # with pen
-    p_wrist_ee: [0, 0, 0.255]
+    # p_wrist_ee: [0, 0, 0.255]
     
     # without pen
     # p_wrist_ee: [0, 0, 0.18]
 
     # with hand
-    #p_wrist_ee: [0, 0, ?]
+    p_wrist_ee: [0, 0, 0.17]
 
   # Hybrid Impedance Controller 
   # (Spong, Journal of Robotics And Automation, Vol. 4, Issue 5, 1988)
@@ -61,7 +62,7 @@ lwr:
     tip_name: lwr_7_link
 
     # with pen
-    p_wrist_ee: [0, 0, 0.255]
+    # p_wrist_ee: [0, 0, 0.255]
     
     # without pen
     # p_wrist_ee: [0, 0, 0.18]
@@ -70,17 +71,17 @@ lwr:
     # p_wrist_ee: [0, 0, 0.18]
 
     # with hand
-    #p_wrist_ee: [0, 0, ?]
+    p_wrist_ee: [0, 0, 0.17]
     
     # table + foam
-    p_base_ws: [-0.7, 0, 0.05]
+    # p_base_ws: [-0.7, 0, 0.05]
     
     #  table + wood + foam
-    # p_base_ws: [-0.7, 0, 0.075]
+    p_base_ws: [-0.7, 0, 0.075]
 
-    p_sensor_cp: [0, 0, 0.025]
+    p_sensor_cp: [0, 0, 0.125]
     
-    ft_sensor_topic_name: /gravity_compensation/ft_compensated
+    ft_sensor_topic_name: /lwr/ft_sensor_calib_controller/ft_sensor_no_gravity
     ws_base_angles: [0, 0, 0]
     publish_rate: 1000 #Hz
 
