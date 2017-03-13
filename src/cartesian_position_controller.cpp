@@ -4,11 +4,14 @@
 #include <kdl/chainfksolverpos_recursive.hpp>
 #include <kdl/chainiksolverpos_lma.hpp>
 #include <kdl_conversions/kdl_msg.h>
+#include <kdl/rigidbodyinertia.hpp>
+#include <kdl/rotationalinertia.hpp>
 
 #include <angles/angles.h>
 #include <eigen_conversions/eigen_kdl.h>
 #include <math.h>
 #include <ros/package.h>
+#include <yaml-cpp/yaml.h>
 
 #include <lwr_force_position_controllers/cartesian_position_controller.h>
 
@@ -55,9 +58,23 @@ namespace lwr_controllers {
     // Extend the default chain with a fake segment in order to evaluate
     // Jacobians and forward kinematics with respect to a given reference point
     // (typicallly the tool tip)
+    // also takes into account end effector mass and inertia
     KDL::Joint fake_joint = KDL::Joint();
     KDL::Frame frame(KDL::Rotation::Identity(), p_wrist_ee_);
-    KDL::Segment fake_segment(fake_joint, frame);
+
+    double tool_mass;
+    double fake_cylinder_radius  = 0;
+    double fake_cylinder_height = 0;
+    KDL::Vector p_sensor_tool_com;
+    load_calib_data(tool_mass, p_sensor_tool_com);
+
+    double fake_cyl_i_xx = 1.0 / 12.0 * tool_mass * (3 * pow(fake_cylinder_radius, 2) + \
+						     pow(fake_cylinder_height, 2));
+    double fake_cyl_i_zz = 1.0 / 2.0 * tool_mass * pow(fake_cylinder_radius, 2);
+    KDL::RotationalInertia rot_inertia(fake_cyl_i_xx, fake_cyl_i_xx, fake_cyl_i_zz);
+    KDL::RigidBodyInertia inertia(tool_mass, p_sensor_tool_com, rot_inertia);
+
+    KDL::Segment fake_segment(fake_joint, frame, inertia);
     extended_chain_ = kdl_chain_;
     extended_chain_.addSegment(fake_segment);
 
@@ -116,6 +133,22 @@ namespace lwr_controllers {
     B_.resize(kdl_chain_.getNrOfJoints());
 	
     return true;
+  }
+
+  void CartesianPositionController::load_calib_data(double& tool_mass, KDL::Vector& p_sensor_tool_com)
+  {
+    std::string file_name = ros::package::getPath("lwr_force_position_controllers") +\
+      "/config/ft_calib_data.yaml";
+    YAML::Node ft_data_yaml = YAML::LoadFile(file_name);
+
+    std::vector<double> p_sensor_tool_com_vec(6);
+    // get data from the yaml file
+    tool_mass = ft_data_yaml["gripper_mass"].as<double>();
+    p_sensor_tool_com_vec = ft_data_yaml["gripper_com_pose"].as<std::vector<double>>();
+
+    // transform to KDL
+    for (int i=0; i<3; i++)
+	p_sensor_tool_com.data[i] = p_sensor_tool_com_vec[i];
   }
 
   void CartesianPositionController::starting(const ros::Time& time)

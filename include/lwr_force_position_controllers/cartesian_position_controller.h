@@ -52,6 +52,7 @@ namespace lwr_controllers
     void publish_data(ros::Publisher& pub, KDL::JntArray& array);
     void print_joint_array(KDL::JntArray& array);
     void update_fri_inertia_matrix(Eigen::MatrixXd& fri_B);
+    void load_calib_data(double& tool_mass, KDL::Vector& p_sensor_tool_com);
     
     // joint position controller
     double kp_, kp_a5_, kp_a6_, kd_;
