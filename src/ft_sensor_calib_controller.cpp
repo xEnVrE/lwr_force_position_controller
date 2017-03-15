@@ -182,8 +182,12 @@ namespace lwr_controllers {
   bool FtSensorCalibController::move_next_calib_pose(std_srvs::Empty::Request& req,\
 						     std_srvs::Empty::Response& res)
   {
-    if (number_of_poses_ == pose_counter_)
-      return true;
+    if (number_of_poses_ <= pose_counter_)
+      {
+	pose_counter_++;
+	std::cout << "Manual pose " << pose_counter_ << std::endl;
+	return true;
+      }
 
     std::cout << "Sending pose " << pose_counter_ << " to joint_trajectory_controller" << std::endl;
 
@@ -263,7 +267,7 @@ namespace lwr_controllers {
     add_measurement(gravity_ft, ft_raw_avg);
 
     // save data to allow data recovery if needed
-    save_calib_meas(gravity_ft, ft_raw_avg, pose_counter_);
+    save_calib_meas(gravity_ft, ft_raw_avg, pose_counter_, joint_msr_states_.q);
 
     // get current estimation
     Eigen::VectorXd ft_calib = ft_calib_->getCalib();
@@ -336,7 +340,8 @@ namespace lwr_controllers {
     std::cout << "Recovered calibration data for " << number << " poses" << std::endl;
   }
 
-  void FtSensorCalibController::save_calib_meas(KDL::Vector gravity, KDL::Wrench ft_wrench_avg, int index)
+  void FtSensorCalibController::save_calib_meas(KDL::Vector gravity, KDL::Wrench ft_wrench_avg, int index,\
+						KDL::JntArray q_kdl)
   {
     std::string file_name = ros::package::getPath("lwr_force_position_controllers") + \
       "/config/ft_calib_meas.yaml";
@@ -345,17 +350,21 @@ namespace lwr_controllers {
     std::vector<double> gravity_vec(3);
     std::vector<double> ft_force_avg(3);
     std::vector<double> ft_torque_avg(3);
+    std::vector<double> q(7);
     for (int i=0; i<3; i++)
       {
 	gravity_vec[i] = gravity.data[i];
 	ft_force_avg[i] = ft_wrench_avg.force.data[i];
 	ft_torque_avg[i] = ft_wrench_avg.torque.data[i];
       }
+    for (int i=0; i<7; i++)
+      q[i] = q_kdl(i);
 
     ft_data_yaml["calib_meas_number"] = index;
     ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["gravity"] = gravity_vec;
     ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["force_avg"] = ft_force_avg;
     ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["torque_avg"] = ft_torque_avg;
+    ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["q"] = q;
 
     std::ofstream yaml_out(file_name);
     yaml_out << ft_data_yaml;

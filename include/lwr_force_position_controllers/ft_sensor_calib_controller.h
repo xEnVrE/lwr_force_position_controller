@@ -40,7 +40,8 @@ namespace lwr_controllers
     bool start_compensation(std_srvs::Empty::Request&,\
 			    std_srvs::Empty::Response&);
     void recover_existing_data();
-    void save_calib_meas(KDL::Vector gravity, KDL::Wrench ft_wrench_avg, int index);
+    void save_calib_meas(KDL::Vector gravity, KDL::Wrench ft_wrench_avg, int index,\
+			 KDL::JntArray q);
 
     bool do_estimation_step(std_srvs::Empty::Request&,\
 		      std_srvs::Empty::Response&);
