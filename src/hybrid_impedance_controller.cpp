@@ -4,9 +4,12 @@
 #include <angles/angles.h>
 #include <geometry_msgs/WrenchStamped.h>
 
-#define DEFAULT_KP_POS 20
-#define DEFAULT_KP_ATT 20
-#define DEFAULT_KD 20
+#define DEFAULT_KP_POS 200
+#define DEFAULT_KP_ATT 200
+#define DEFAULT_KP_GAMMA 200
+#define DEFAULT_KD_POS 50
+#define DEFAULT_KD_ATT 50
+#define DEFAULT_KD_GAMMA 50
 #define DEFAULT_KM_F 1
 #define DEFAULT_KD_F 25
 #define DEFAULT_P2P_TRAJ_DURATION 5.0
@@ -52,14 +55,29 @@ namespace lwr_controllers {
 						&HybridImpedanceController::get_cmd_gains, this); 
 
     // instantiate variables
+    // set default proportional gains
     Kp_ = Eigen::Matrix<double, 6, 6>::Identity();
     Kp_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity() * DEFAULT_KP_POS;
-    Kp_.block<3,3>(3,3) = Eigen::Matrix<double, 3, 3>::Identity() * DEFAULT_KP_ATT;
-    Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KD; 
+    Kp_.block<2,2>(3,3) = Eigen::Matrix<double, 2, 2>::Identity() * DEFAULT_KP_ATT;
+    Kp_(5,5) =  DEFAULT_KP_GAMMA;
+
+    // set default derivative gains
+    Kd_ = Eigen::Matrix<double, 6, 6>::Identity();
+    Kd_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity() * DEFAULT_KD_POS;
+    Kd_.block<2,2>(3,3) = Eigen::Matrix<double, 2, 2>::Identity() * DEFAULT_KD_ATT;
+    Kd_(5,5) =  DEFAULT_KD_GAMMA;
+    
+    // set default force gains
+    km_f_ = DEFAULT_KM_F;
+    kd_f_ = DEFAULT_KD_F;
+
+    // set trajectory duration
+    p2p_traj_duration_ = DEFAULT_P2P_TRAJ_DURATION;
+    force_ref_duration_ = DEFAULT_FORCE_TRAJ_DURATION;
+
     p2p_trj_const_ = Eigen::MatrixXf(4, 6);
     force_ref_const_ = Eigen::VectorXf(3);
 
-    // set defaults
     km_f_ = DEFAULT_KM_F;
     kd_f_ = DEFAULT_KD_F;
     p2p_traj_duration_ = DEFAULT_P2P_TRAJ_DURATION;
@@ -152,8 +170,10 @@ namespace lwr_controllers {
     // position controlled DoF
     // ws_x ws_y R_ee_ws_(alpha, beta, gamma) 
     acc_cmd = Kp_ * err_x + Kd_ * (xdot_des - ws_xdot_) + xdotdot_des;
-    acc_cmd(0) = acc_cmd(0) - ws_F_ee.force.x();
-    acc_cmd(1) = acc_cmd(1) - ws_F_ee.force.y();
+    // acc_cmd(0) = acc_cmd(0) - ws_F_ee.force.x();
+    // acc_cmd(1) = acc_cmd(1) - ws_F_ee.force.y();
+    acc_cmd(0) = acc_cmd(0);
+    acc_cmd(1) = acc_cmd(1);
     acc_cmd(3) = acc_cmd(3);// - ws_F_ee.torque.x();
     acc_cmd(4) = acc_cmd(4);// - ws_F_ee.torque.y();
     acc_cmd(5) = acc_cmd(5);// - ws_F_ee.torque.z();
@@ -382,11 +402,17 @@ namespace lwr_controllers {
   {
     // set the desired gains requested by the user
     Kp_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity() * req.command.kp_pos;
-    Kp_.block<3,3>(3,3) = Eigen::Matrix<double, 3, 3>::Identity() * req.command.kp_att;
-    Kd_ = Eigen::Matrix<double, 6, 6>::Identity() * req.command.kd; 
+    Kp_.block<2,2>(3,3) = Eigen::Matrix<double, 2, 2>::Identity() * req.command.kp_att;
+    Kp_(5,5) = req.command.kp_gamma;
+   
+    Kd_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity() * req.command.kd_pos;
+    Kd_.block<2,2>(3,3) = Eigen::Matrix<double, 2, 2>::Identity() * req.command.kd_att;
+    Kd_(5,5) = req.command.kd_gamma;
+
     km_f_ = req.command.km_f;
     kd_f_ = req.command.kd_f;
-    set_gains_im(req.command.kp_z_im, req.command.kp_att_im, req.command.kd_im);
+    
+    set_gains_im(req.command.kp_z_im, req.command.kp_gamma_im, req.command.kd_pos_im, req.command.kd_att_im);
 
     return true;
   }
@@ -427,20 +453,26 @@ namespace lwr_controllers {
   bool HybridImpedanceController::get_cmd_gains(lwr_force_position_controllers::HybridImpedanceCommandGains::Request &req, \
 						lwr_force_position_controllers::HybridImpedanceCommandGains::Response &res)
   {
-    double kp_z_im, kp_att_im, kd_im;
+    double kp_z_im, kp_gamma_im, kd_pos_im, kd_att_im;
 
     // get gains
     res.command.kp_pos = Kp_(0, 0);
     res.command.kp_att = Kp_(3, 3);
-    res.command.kd = Kd_(0, 0);
+    res.command.kp_gamma = Kp_(5, 5);
+
+    res.command.kd_pos = Kd_(0, 0);
+    res.command.kd_att = Kd_(3, 3);
+    res.command.kd_gamma = Kd_(5, 5);
+
     res.command.km_f = km_f_;
     res.command.kd_f = kd_f_;
 
     // get internal motion gains
-    get_gains_im(kp_z_im, kp_att_im, kd_im);
+    get_gains_im(kp_z_im, kp_gamma_im, kd_pos_im, kd_att_im);
     res.command.kp_z_im = kp_z_im;
-    res.command.kp_att_im = kp_att_im;
-    res.command.kd_im = kd_im;
+    res.command.kp_gamma_im = kp_gamma_im;
+    res.command.kd_pos_im = kd_pos_im;
+    res.command.kd_att_im = kd_att_im;
 
     return true;
   }

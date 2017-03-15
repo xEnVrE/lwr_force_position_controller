@@ -4,11 +4,14 @@
 #include <kdl_conversions/kdl_msg.h>
 #include <eigen_conversions/eigen_kdl.h>
 #include <Eigen/LU>
+#include <ros/package.h>
+#include <yaml-cpp/yaml.h>
 #include <lwr_force_position_controllers/cartesian_inverse_dynamics_controller.h>
 
-#define DEFAULT_KP_IM_A4 30
-#define DEFAULT_KP_IM_A5 10
-#define DEFAULT_KD_IM    30
+#define DEFAULT_KP_IM_LINK4 0.001
+#define DEFAULT_KP_IM_LINK5 3
+#define DEFAULT_KD_IM_LINK4 10
+#define DEFAULT_KD_IM_LINK5 10
 // syntax:
 //
 // for jacobians x_J_y := Jacobian w.r.t reference point y expressed in basis x
@@ -32,25 +35,18 @@ namespace lwr_controllers {
 
     // get use_simulation parameter from rosparam server
     ros::NodeHandle nh;
-    nh.getParam("use_simulation", use_simulation_);
+    nh.getParam("/use_simulation", use_simulation_);
 
-    // extend the default chain with a fake segment in order to evaluate
-    // Jacobians, derivatives of jacobians and forward kinematics with respect to a given reference point
-    // (typicallly the tool tip)
-    // the reference point is initialized by the inheriting class with a call to set_p_wrist_ee
-    KDL::Joint fake_joint = KDL::Joint();
-    KDL::Frame frame(KDL::Rotation::Identity(), p_wrist_ee_);
-    KDL::Segment fake_segment(fake_joint, frame);
-    extended_chain_ = kdl_chain_;
-    extended_chain_.addSegment(fake_segment);
+    // extend kdl chain with end-effector
+    extend_chain(n);
 
-    // create a new chain from vito_anchor to the link
+    // create two chain from vito_anchor to the link
     // specified by the parameter internal_motion_controlled_link
     std::string root_name, im_c_link_name;
     nh_.getParam("root_name", root_name);
     // nh_.getParam("internal_motion_controlled_link", im_c_link_name);
-    kdl_tree_.getChain(root_name, "lwr_4_link", im_a4_chain_);
-    kdl_tree_.getChain(root_name, "lwr_5_link", im_a5_chain_);
+    kdl_tree_.getChain(root_name, "lwr_4_link", im_link4_chain_);
+    kdl_tree_.getChain(root_name, "lwr_5_link", im_link5_chain_);
 
     // instantiate solvers
     // gravity_ is a member of KinematicChainControllerBase
@@ -59,10 +55,10 @@ namespace lwr_controllers {
     wrist_jacobian_solver_.reset(new KDL::ChainJntToJacSolver(kdl_chain_));
     ee_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(extended_chain_));
     ee_jacobian_dot_solver_.reset(new KDL::ChainJntToJacDotSolver(extended_chain_));
-    im_a4_jacobian_solver_.reset(new KDL::ChainJntToJacSolver(im_a4_chain_));
-    im_a4_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(im_a4_chain_));
-    im_a5_jacobian_solver_.reset(new KDL::ChainJntToJacSolver(im_a5_chain_));
-    im_a5_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(im_a5_chain_));
+    im_link4_jacobian_solver_.reset(new KDL::ChainJntToJacSolver(im_link4_chain_));
+    im_link4_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(im_link4_chain_));
+    im_link5_jacobian_solver_.reset(new KDL::ChainJntToJacSolver(im_link5_chain_));
+    im_link5_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(im_link5_chain_));
  
     // instantiate wrenches
     wrench_wrist_ = KDL::Wrench();
@@ -78,17 +74,21 @@ namespace lwr_controllers {
     ws_TA_dot_ = Eigen::MatrixXd::Zero(6,6);
 
     // instantiate analytical to geometric transformation matrices
-    base_TA_im_a5_ = Eigen::MatrixXd::Zero(6,6);
-    base_TA_im_a5_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity();
+    base_TA_im_link5_ = Eigen::MatrixXd::Zero(6,6);
+    base_TA_im_link5_.block<3,3>(0,0) = Eigen::Matrix<double, 3, 3>::Identity();
 
     // set default controller gains
-    Kp_im_ = Eigen::Matrix<double, 6, 6>::Identity(); 
-    Kd_im_ = Eigen::Matrix<double, 6, 6>::Identity() * DEFAULT_KD_IM;
-    // set proportional action in the z direction only
-    Kp_im_(2,2) = DEFAULT_KP_IM_A4;
-    Kp_im_(3,3) = DEFAULT_KP_IM_A5;
-    Kp_im_(4,4) = DEFAULT_KP_IM_A5;
-    Kp_im_(5,5) = DEFAULT_KP_IM_A5;
+    Kp_im_ = Eigen::Matrix<double, 6, 6>::Zero();
+    Kd_im_ = Eigen::Matrix<double, 6, 6>::Zero();
+    for(int i = 0; i < 3; i++)
+      Kd_im_(i,i) = DEFAULT_KD_IM_LINK4;
+    for(int i = 3; i < 6; i++)
+      Kd_im_(i,i) = DEFAULT_KD_IM_LINK5;
+
+    // set proportional action in the z direction only (for link4) (position)
+    Kp_im_(2,2) = DEFAULT_KP_IM_LINK4;
+    // set proportional action along z axis only (for link5) (attitude)
+    Kp_im_(5,5) = DEFAULT_KP_IM_LINK5;
 
     // subscribe to force/torque sensor topic
     sub_force_ = n.subscribe(ft_sensor_topic_name_, 1, \
@@ -101,18 +101,18 @@ namespace lwr_controllers {
   {
 
     // get current robot configuration (q) for the 5th link
-    KDL::JntArray q_im_a5;
-    q_im_a5.resize(im_a5_chain_.getNrOfJoints());
-    for(size_t i=0; i<im_a5_chain_.getNrOfJoints(); i++)
-	q_im_a5(i) = joint_handles_[i].getPosition();
+    KDL::JntArray q_im_link5;
+    q_im_link5.resize(im_link5_chain_.getNrOfJoints());
+    for(size_t i=0; i<im_link5_chain_.getNrOfJoints(); i++)
+	q_im_link5(i) = joint_handles_[i].getPosition();
 
     // get current attitude for 5th link
-    double alpha_im_a5, beta_im_a5, gamma_im_a5;
-    KDL::Frame im_a5_fk_frame;
-    im_a5_fk_solver_->JntToCart(q_im_a5, im_a5_fk_frame);
-    im_a5_fk_frame.M.GetEulerZYZ(alpha_im_a5, beta_im_a5, gamma_im_a5);
+    double alpha_im_link5, beta_im_link5, gamma_im_link5;
+    KDL::Frame im_link5_fk_frame;
+    im_link5_fk_solver_->JntToCart(q_im_link5, im_link5_fk_frame);
+    im_link5_fk_frame.M.GetEulerZYZ(alpha_im_link5, beta_im_link5, gamma_im_link5);
 
-    gamma_im_a5_initial_ = gamma_im_a5;
+    gamma_im_link5_initial_ = gamma_im_link5;
   }
 
   void CartesianInverseDynamicsController::update_fri_inertia_matrix(Eigen::MatrixXd& fri_B)
@@ -144,14 +144,14 @@ namespace lwr_controllers {
     update_fri_inertia_matrix(fri_B);
  
     // get the current configuration of the internal motion controlled links
-    KDL::JntArray q_im_a4;
-    KDL::JntArray q_im_a5;
-    q_im_a4.resize(im_a4_chain_.getNrOfJoints());
-    q_im_a5.resize(im_a5_chain_.getNrOfJoints());
-    for(size_t i=0; i<im_a4_chain_.getNrOfJoints(); i++)
-	q_im_a4(i) = joint_msr_states_.q(i);
-    for(size_t i=0; i<im_a5_chain_.getNrOfJoints(); i++)
-	q_im_a5(i) = joint_msr_states_.q(i);
+    KDL::JntArray q_im_link4;
+    KDL::JntArray q_im_link5;
+    q_im_link4.resize(im_link4_chain_.getNrOfJoints());
+    q_im_link5.resize(im_link5_chain_.getNrOfJoints());
+    for(size_t i=0; i<im_link4_chain_.getNrOfJoints(); i++)
+	q_im_link4(i) = joint_msr_states_.q(i);
+    for(size_t i=0; i<im_link5_chain_.getNrOfJoints(); i++)
+	q_im_link5(i) = joint_msr_states_.q(i);
 
     //
     //////////////////////////////////////////////////////////////////////////////////
@@ -197,15 +197,15 @@ namespace lwr_controllers {
     // evaluate the current geometric jacobian related to 
     // the internal motion controlled links (linear velocity of the third and
     // angular velocity of the fourth)
-    KDL::Jacobian base_J_im_a4;
-    KDL::Jacobian base_J_im_a5;
+    KDL::Jacobian base_J_im_link4;
+    KDL::Jacobian base_J_im_link5;
     Eigen::MatrixXd base_J_im = Eigen::MatrixXd::Zero(6,7);
-    base_J_im_a4.resize(im_a4_chain_.getNrOfJoints());
-    base_J_im_a5.resize(im_a5_chain_.getNrOfJoints());
-    im_a4_jacobian_solver_->JntToJac(q_im_a4, base_J_im_a4);
-    im_a5_jacobian_solver_->JntToJac(q_im_a5, base_J_im_a5);
-    base_J_im.block(0, 0, 3, im_a4_chain_.getNrOfJoints()) = \
-      base_J_im_a4.data.block(0, 0, 3, im_a4_chain_.getNrOfJoints());
+    base_J_im_link4.resize(im_link4_chain_.getNrOfJoints());
+    base_J_im_link5.resize(im_link5_chain_.getNrOfJoints());
+    im_link4_jacobian_solver_->JntToJac(q_im_link4, base_J_im_link4);
+    im_link5_jacobian_solver_->JntToJac(q_im_link5, base_J_im_link5);
+    base_J_im.block(0, 0, 3, im_link4_chain_.getNrOfJoints()) = \
+      base_J_im_link4.data.block(0, 0, 3, im_link4_chain_.getNrOfJoints());
 
     //
     //////////////////////////////////////////////////////////////////////////////////
@@ -222,10 +222,10 @@ namespace lwr_controllers {
     ee_fk_solver_->JntToCart(joint_msr_states_.q, ee_fk_frame);
 
     // internal motion controlled link
-    KDL::Frame im_a4_fk_frame;
-    KDL::Frame im_a5_fk_frame;
-    im_a4_fk_solver_->JntToCart(q_im_a4, im_a4_fk_frame);
-    im_a5_fk_solver_->JntToCart(q_im_a5, im_a5_fk_frame);
+    KDL::Frame im_link4_fk_frame;
+    KDL::Frame im_link5_fk_frame;
+    im_link4_fk_solver_->JntToCart(q_im_link4, im_link4_fk_frame);
+    im_link5_fk_solver_->JntToCart(q_im_link5, im_link5_fk_frame);
 
     //
     //////////////////////////////////////////////////////////////////////////////////
@@ -267,28 +267,28 @@ namespace lwr_controllers {
 
     //////////////////////////////////////////////////////////////////////////////////
     //
-    // Analytical Jacobian written w.r.t. the vito_anchor frame base_JA_im_a5
-    // base_JA_im_a5 = base_TA_im_a5 * base_J_im_a5
+    // Analytical Jacobian written w.r.t. the vito_anchor frame base_JA_im_link5
+    // base_JA_im_link5 = base_TA_im_link5 * base_J_im_link5
     //
     //////////////////////////////////////////////////////////////////////////////////
     //
 
-    double alpha_im_a5, beta_im_a5, gamma_im_a5;
-    im_a5_fk_frame.M.GetEulerZYZ(alpha_im_a5, beta_im_a5, gamma_im_a5);
+    double alpha_im_link5, beta_im_link5, gamma_im_link5;
+    im_link5_fk_frame.M.GetEulerZYZ(alpha_im_link5, beta_im_link5, gamma_im_link5);
     
     // evaluate the transformation matrix between 
     // the geometric and analytical jacobian TA
 
-    Eigen::Matrix3d base_T_im_a5;
-    eul_kin_ZYZ(beta_im_a5, alpha_im_a5, base_T_im_a5);
-    base_TA_im_a5_.block<3,3>(3,3) = base_T_im_a5.inverse();
+    Eigen::Matrix3d base_T_im_link5;
+    eul_kin_ZYZ(beta_im_link5, alpha_im_link5, base_T_im_link5);
+    base_TA_im_link5_.block<3,3>(3,3) = base_T_im_link5.inverse();
 
-    Eigen::MatrixXd base_JA_im_a5;
-    base_JA_im_a5 = base_TA_im_a5_ * base_J_im_a5.data;
+    Eigen::MatrixXd base_JA_im_link5;
+    base_JA_im_link5 = base_TA_im_link5_ * base_J_im_link5.data;
 
-    // add the angular part of base_JA_im_a5 to base_J_im
-    base_J_im.block(3, 0, 3, im_a5_chain_.getNrOfJoints()) = \
-      base_JA_im_a5.block(3, 0, 3, im_a5_chain_.getNrOfJoints());
+    // add the angular part of base_JA_im_link5 to base_J_im
+    base_J_im.block(3, 0, 3, im_link5_chain_.getNrOfJoints()) = \
+      base_JA_im_link5.block(3, 0, 3, im_link5_chain_.getNrOfJoints());
 
     //
     //////////////////////////////////////////////////////////////////////////////////
@@ -305,9 +305,11 @@ namespace lwr_controllers {
     // BA = inv(ws_JA_ee * B_inv * base_J_wrist')
     Eigen::MatrixXd BA;
     if(use_simulation_)
+      // use kdl matrix for simulation
       BA = ws_JA_ee * B.data.inverse() * base_J_wrist.data.transpose();
     else
-      BA = ws_JA_ee * fri_B.inverse() * base_J_wrist.data.transpose();
+      // use kdl matrix for real scenario
+      BA = ws_JA_ee * B.data.inverse() * base_J_wrist.data.transpose();
 
     BA = BA.inverse();
 
@@ -382,10 +384,12 @@ namespace lwr_controllers {
 
     if(use_simulation_)
       tau_fri_ = C.data + base_J_wrist.data.transpose() * \
-	(base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
+    	(base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
     else
-      tau_fri_ = base_J_wrist.data.transpose() * \
-	(base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
+      // tau_fri_ = C.data + base_J_wrist.data.transpose() *		\
+      // 	(base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
+      tau_fri_ = C.data + base_J_wrist.data.transpose() *	\
+	(- BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
 
     command_filter_ = base_J_wrist.data.transpose() * BA;
     
@@ -408,8 +412,8 @@ namespace lwr_controllers {
       gen_inv = B.data.inverse() * base_J_wrist.data.transpose() * \
 	(base_J_wrist.data * B.data.inverse() * base_J_wrist.data.transpose()).inverse();
     else
-      gen_inv = fri_B.inverse() * base_J_wrist.data.transpose() * \
-	(base_J_wrist.data * fri_B.inverse() * base_J_wrist.data.transpose()).inverse();
+      gen_inv = B.data.inverse() * base_J_wrist.data.transpose() * \
+	(base_J_wrist.data * B.data.inverse() * base_J_wrist.data.transpose()).inverse();
 
     // evaluate the null space filter
     Eigen::MatrixXd ns_filter = Eigen::Matrix<double, 7, 7>::Identity() - \
@@ -419,8 +423,8 @@ namespace lwr_controllers {
     Eigen::VectorXd im_state(6);
     Eigen::VectorXd im_state_dot;
 
-    im_state << im_a4_fk_frame.p.x(), im_a4_fk_frame.p.y(), im_a4_fk_frame.p.z(),\
-      alpha_im_a5, beta_im_a5, gamma_im_a5;
+    im_state << im_link4_fk_frame.p.x(), im_link4_fk_frame.p.y(), im_link4_fk_frame.p.z(),\
+      alpha_im_link5, beta_im_link5, gamma_im_link5;
     
     im_state_dot = base_J_im * joint_msr_states_.qdot.data;
 
@@ -428,12 +432,14 @@ namespace lwr_controllers {
     // tau = null_space_filter * J_im' * (Kp * (x_des - x) - Kd * x_dot) 
     Eigen::VectorXd im_des_state = Eigen::VectorXd(6);
 
-    // control strategy is to command an height offset between ee and im link
-    double offset = 0.2;
-    im_des_state << ee_fk_frame.p.x() / 2, 0 , ee_fk_frame.p.z() + offset, \
+    // control strategy is to command an height offset between ee and link4
+    // and command the attitude (gamma only) of the link5
+    // in order to avoid joints limits
+    double z_offset = 0.8;
+    im_des_state << ee_fk_frame.p.x(), ee_fk_frame.p.y() + 0.6 , ee_fk_frame.p.z() + z_offset, \
       -M_PI / 2, M_PI / 2, 0;
 
-    if(!(-M_PI / 2 < gamma_im_a5_initial_ && gamma_im_a5_initial_ < M_PI / 2))
+    if(!(-M_PI / 2 < gamma_im_link5_initial_ && gamma_im_link5_initial_ < M_PI / 2))
 	im_des_state(5) = M_PI;
 
     Eigen::VectorXd im_error = im_des_state - im_state;
@@ -488,6 +494,63 @@ namespace lwr_controllers {
       }
   }
 
+  void CartesianInverseDynamicsController::load_calib_data(double& total_mass, KDL::Vector& p_sensor_tool_com)
+  {
+    std::string file_name = ros::package::getPath("lwr_force_position_controllers") +\
+      "/config/ft_calib_data.yaml";
+    YAML::Node ft_data_yaml = YAML::LoadFile(file_name);
+
+    std::vector<double> p_sensor_tool_com_vec(6);
+    // get data from the yaml file
+    double tool_mass = ft_data_yaml["gripper_mass"].as<double>();
+    p_sensor_tool_com_vec = ft_data_yaml["gripper_com_pose"].as<std::vector<double>>();
+
+    // transform to KDL
+    for (int i=0; i<3; i++)
+	p_sensor_tool_com.data[i] = p_sensor_tool_com_vec[i];
+
+    // compensate for additional items attached
+    double mass_sensor_support = 0.194;
+    double mass_sensor = 0.099;
+    total_mass = tool_mass + mass_sensor_support + mass_sensor;
+    
+    p_sensor_tool_com.x(tool_mass * p_sensor_tool_com.x() / total_mass);
+    p_sensor_tool_com.y(tool_mass * p_sensor_tool_com.y() / total_mass);
+    p_sensor_tool_com.z((mass_sensor_support * 0.013 + mass_sensor * 0.0335 + \
+			 tool_mass * (0.041 + p_sensor_tool_com.z())) / total_mass);
+
+  }
+
+  void CartesianInverseDynamicsController::extend_chain(ros::NodeHandle &n)
+  {
+    // extend the default chain with a fake segment in order to evaluate
+    // dynamics (B and C), Jacobians, derivatives of jacobians and 
+    // forward kinematics with respect to a given reference point
+    // (typically the tool tip)
+    // the reference point is initialized by the inheriting class with a call to set_p_wrist_ee
+    KDL::Joint fake_joint = KDL::Joint();
+    KDL::Frame frame(KDL::Rotation::Identity(), p_wrist_ee_);
+
+    double total_mass;
+    double fake_cylinder_radius  = 0.0475;
+    double fake_cylinder_height = 0.31;
+    KDL::Vector p_sensor_tool_com;
+    load_calib_data(total_mass, p_sensor_tool_com);
+        
+    double fake_cyl_i_xx = 1.0 / 12.0 * total_mass * (3 * pow(fake_cylinder_radius, 2) + \
+    						     pow(fake_cylinder_height, 2));
+    double fake_cyl_i_zz = 1.0 / 2.0 * total_mass * pow(fake_cylinder_radius, 2);
+
+    
+    KDL::RotationalInertia rot_inertia(fake_cyl_i_xx, fake_cyl_i_xx, fake_cyl_i_zz);
+    KDL::RigidBodyInertia inertia(total_mass, p_sensor_tool_com, rot_inertia);
+
+    KDL::Segment fake_segment(fake_joint, frame, inertia);
+    extended_chain_ = kdl_chain_;
+    extended_chain_.addSegment(fake_segment);
+
+  }
+  
   void CartesianInverseDynamicsController::force_torque_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg)
   {
     KDL::Wrench wrench_wrist_topic;
@@ -498,20 +561,22 @@ namespace lwr_controllers {
     wrench_wrist_ = - wrench_wrist_topic;
   }
 
-  void CartesianInverseDynamicsController::get_gains_im(double& kp_z, double& kp_att, double& kd)
+  void CartesianInverseDynamicsController::get_gains_im(double& kp_z, double& kp_gamma, double& kd_pos, double& kd_att)
   {
     kp_z = Kp_im_(2, 2);
-    kp_att = Kp_im_(4, 4);
-    kd = Kd_im_(0, 0);
+    kp_gamma = Kp_im_(5, 5);
+    kd_pos = Kd_im_(0, 0);
+    kd_att = Kd_im_(3, 3);
   }
 
-  void CartesianInverseDynamicsController::set_gains_im(double kp_z, double kp_att, double kd)
+  void CartesianInverseDynamicsController::set_gains_im(double kp_z, double kp_gamma, double kd_pos, double kd_att)
   {
     Kp_im_(2,2) = kp_z;
-    Kp_im_(3,3) = kp_att;
-    Kp_im_(4,4) = kp_att;
-    Kp_im_(5,5) = kp_att;
-    Kd_im_ = Eigen::Matrix<double, 6, 6>::Identity() * kd;
+    Kp_im_(5,5) = kp_gamma;
+    for(int i = 0; i < 3; i++)
+      Kd_im_(i,i) = kd_pos;
+    for(int i = 3; i < 6; i++)
+      Kd_im_(i,i) = kd_att;
   }
 
   void CartesianInverseDynamicsController::set_ft_sensor_topic_name(std::string topic)
