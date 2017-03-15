@@ -9,7 +9,6 @@
 #include <std_srvs/Empty.h> 
 #include <geometry_msgs/WrenchStamped.h>
 #include <boost/scoped_ptr.hpp>
-#include <boost/thread/mutex.hpp>
 #include <fstream>
 
 /*
@@ -36,11 +35,10 @@ namespace lwr_controllers
     void update(const ros::Time& time, const ros::Duration& period);
 
   private:
+    void extend_chain(ros::NodeHandle &n);
     void ft_sensor_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void evaluate_traj_constants(KDL::Vector&, KDL::Rotation&);
     void evaluate_traj_des(const ros::Duration& period);
-    bool save_debug_data(std_srvs::Empty::Request&,\
-			 std_srvs::Empty::Response&);
     bool set_cmd_traj(lwr_force_position_controllers::CartesianPositionCommandTraj::Request&, \
 		      lwr_force_position_controllers::CartesianPositionCommandTraj::Response&);
     bool set_cmd_gains(lwr_force_position_controllers::CartesianPositionCommandGains::Request&, \
@@ -55,7 +53,8 @@ namespace lwr_controllers
     void load_calib_data(double& tool_mass, KDL::Vector& p_sensor_tool_com);
     
     // joint position controller
-    double kp_, kp_a5_, kp_a6_, kd_;
+    double kp_, kp_a4_, kp_a5_, kp_a6_;
+    double kd_, kd_a4_, kd_a5_, kd_a6_;
    
     // inertia matrix and coriolis
     boost::scoped_ptr<KDL::ChainDynParam> dyn_param_solver_;
@@ -75,8 +74,6 @@ namespace lwr_controllers
     KDL::JntArrayAcc traj_des_;
     KDL::JntArray traj_a0_, traj_a3_, traj_a4_, traj_a5_;
     KDL::JntArray prev_q_setpoint_;
-    KDL::JntArray tau_cmd_;
-    KDL::JntArray B_tau_cmd_;
     double time_;
     double p2p_traj_duration_;
 
@@ -89,7 +86,6 @@ namespace lwr_controllers
     ros::ServiceServer set_cmd_traj_service_;
     ros::ServiceServer get_cmd_gains_service_;
     ros::ServiceServer get_cmd_traj_service_;
-    ros::ServiceServer save_debug_data_service_;
 
     // use simulation flag
     bool use_simulation_;
@@ -104,11 +100,6 @@ namespace lwr_controllers
     ros::Time last_publish_time_;
     double publish_rate_;
     ros::Publisher pub_error_, pub_q_des_;
-
-    // data saved to file
-    Eigen::MatrixXd fri_B_;
-    KDL::JntSpaceInertiaMatrix B_;
-    boost::mutex mutex_data_;
 
   };
 
