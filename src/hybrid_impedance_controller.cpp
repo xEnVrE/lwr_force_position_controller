@@ -4,9 +4,9 @@
 #include <angles/angles.h>
 #include <geometry_msgs/WrenchStamped.h>
 
-#define DEFAULT_KP_POS 200
-#define DEFAULT_KP_ATT 200
-#define DEFAULT_KP_GAMMA 200
+#define DEFAULT_KP_POS 1200
+#define DEFAULT_KP_ATT 1200
+#define DEFAULT_KP_GAMMA 25000
 #define DEFAULT_KD_POS 50
 #define DEFAULT_KD_ATT 50
 #define DEFAULT_KD_GAMMA 50
@@ -172,8 +172,8 @@ namespace lwr_controllers {
     acc_cmd = Kp_ * err_x + Kd_ * (xdot_des - ws_xdot_) + xdotdot_des;
     // acc_cmd(0) = acc_cmd(0) - ws_F_ee.force.x();
     // acc_cmd(1) = acc_cmd(1) - ws_F_ee.force.y();
-    acc_cmd(0) = acc_cmd(0);
-    acc_cmd(1) = acc_cmd(1);
+    // acc_cmd(0) = acc_cmd(0);
+    // acc_cmd(1) = acc_cmd(1);
     acc_cmd(3) = acc_cmd(3);// - ws_F_ee.torque.x();
     acc_cmd(4) = acc_cmd(4);// - ws_F_ee.torque.y();
     acc_cmd(5) = acc_cmd(5);// - ws_F_ee.torque.z();
@@ -273,8 +273,8 @@ namespace lwr_controllers {
     // set force trajectory constants
     for(int i = 0; i<3; i++)
       force_ref_const_(i)  = 0;
-    force_ref_const_(0) = -0.1;
-    prev_fz_setpoint_ = -0.1;
+    force_ref_const_(0) = -0.35;
+    prev_fz_setpoint_ = -0.35;
 
     // reset the time
     time_force_ = force_ref_duration_;
