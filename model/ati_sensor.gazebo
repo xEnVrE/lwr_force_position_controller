@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:macro name="kuka_lwr_gazebo_ft_sensor" params="name">
+  <xacro:macro name="ati_sensor_plugin">
 
     <gazebo>
       <plugin name="FTsensor_controller" filename="libgazebo_ros_ft_sensor.so">
         <updateRate>100.0</updateRate>
-        <topicName>${name}/ft_sensor</topicName>
+        <topicName>/lwr/ft_sensor</topicName>
         <jointName>sensor_joint</jointName>
       </plugin>   
     </gazebo>
@@ -15,6 +15,15 @@
       <provideFeedback>true</provideFeedback>
       <disableFixedJointLumping>true</disableFixedJointLumping>
     </gazebo>
+
+    <gazebo reference="kuka_sensor_coupler_link">
+      <material>Gazebo/Red</material>
+    </gazebo>
+
+    <gazebo reference="ati_sensor_link">
+      <material>Gazebo/Silver</material>
+    </gazebo>
+
 
   </xacro:macro>
 

@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ati_sensor">
+
+  <xacro:include filename="$(find lwr_force_position_controllers)/model/ati_sensor.gazebo" />
+
+  <xacro:macro name="ati_sensor" params="parent *origin">
+
+    <joint name="kuka_sensor_coupler_joint" type="fixed">
+      <xacro:insert_block name="origin"/>
+      <child link="kuka_sensor_coupler_link"/>
+      <parent link="${parent}"/>
+    </joint>
+
+    <link name="kuka_sensor_coupler_link">
+      <inertial>
+        <mass value="0.00001"/>
+        <origin xyz="0.0 0.0 0.0"/>
+        <cylinder_inertia_def radius="0.03" length="0.026" mass="0.00001"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0.013" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.045" length="0.026"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="sensor_joint" type="fixed">
+      <origin xyz="0.0 0.0 0.026"/>
+      <child link="ati_sensor_link"/>
+      <parent link="kuka_sensor_coupler_link"/>
+    </joint>
+
+    <link name="ati_sensor_link">
+      <inertial>
+        <mass value="0.00001"/>
+        <origin xyz="0.0 0.0 0.0"/>
+        <cylinder_inertia_def radius="0.03" length="0.015" mass="0.00001"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0.0075" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.0225" length="0.015"/>
+        </geometry>
+      </visual>
+    </link>
+  </xacro:macro>
+
+  <xacro:ati_sensor_plugin/>
+  
+</robot>

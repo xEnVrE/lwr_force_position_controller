@@ -7,8 +7,8 @@
   <xacro:include filename="$(find lwr_force_position_controllers)/model/table.urdf.xacro"/>
   <xacro:include filename="$(find vito_description)/model/materials.urdf"/>
   <xacro:include filename="$(find lwr_description)/model/kuka_lwr.urdf.xacro"/>
-  <xacro:include filename="$(find lwr_force_position_controllers)/model/end_effector.urdf.xacro"/>
-
+  <xacro:include filename="$(find lwr_force_position_controllers)/model/ati_sensor.urdf.xacro"/>
+  <xacro:include filename="$(find soft_hand_description)/model/soft_hand.urdf.xacro"/>
     
   <link name="vito_anchor" />
   
@@ -28,14 +28,22 @@
   <xacro:model_torso name="torso" parent="vito_anchor">
     <origin xyz="0 0 0"/>
   </xacro:model_torso>
-  
+
+  <!-- KUKA LWR4+ -->
   <xacro:kuka_lwr name="lwr" parent="vito_anchor">
     <origin xyz="-0.165 0.10858 0.390" rpy="-1.5707963267948966 -0.5235987010713441 0.5235990737060282"/>
   </xacro:kuka_lwr>
 
-  <xacro:end_effector_kuka_lwr parent="lwr_7_link" name="lwr">
+  <!-- FT SENSOR -->
+  <xacro:ati_sensor parent="lwr_7_link">
     <origin xyz="0 0 0" rpy="0 0 0"/>
-  </xacro:end_effector_kuka_lwr>
+  </xacro:ati_sensor>
+
+  <!-- SOFTHAND -->
+  <xacro:soft_hand parent="ati_sensor_link" name="right_hand" left="false" withAdaptiveTransmission="false" useMimicTag="false">
+    <origin xyz="0 0 0.015" rpy="0 0 1.57"/>
+  </xacro:soft_hand>
+
 
 
 </robot>
