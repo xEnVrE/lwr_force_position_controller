@@ -4,10 +4,14 @@
 #include <kdl/chainfksolverpos_recursive.hpp>
 #include <kdl/chainiksolverpos_lma.hpp>
 #include <kdl_conversions/kdl_msg.h>
+#include <kdl/rigidbodyinertia.hpp>
+#include <kdl/rotationalinertia.hpp>
 
 #include <angles/angles.h>
 #include <eigen_conversions/eigen_kdl.h>
 #include <math.h>
+#include <ros/package.h>
+#include <yaml-cpp/yaml.h>
 
 #include <lwr_force_position_controllers/cartesian_position_controller.h>
 
@@ -16,10 +20,14 @@
 //-------------------------------------
 // GAIN CONSTANTS
 //-------------------------------------
-#define DEFAULT_KP 30
-#define DEFAULT_KP_A5 30
-#define DEFAULT_KP_A6 30
+#define DEFAULT_KP 800
+#define DEFAULT_KP_A4 1000
+#define DEFAULT_KP_A5 1000
+#define DEFAULT_KP_A6 18000
 #define DEFAULT_KD 30
+#define DEFAULT_KD_A4 30
+#define DEFAULT_KD_A5 30
+#define DEFAULT_KD_A6 30
 
 //------------------------------------------------------------------------------
 //TRAJECTORY GENERATION CONSTANTS
@@ -41,40 +49,33 @@ namespace lwr_controllers {
 
     // get use_simulation parameter from rosparam server
     ros::NodeHandle nh;
-    nh.getParam("use_simulation", use_simulation_);
+    nh.getParam("/use_simulation", use_simulation_);
 
     // get publish rate from rosparam
     n.getParam("publish_rate", publish_rate_);
 
-    // get the p_wrist_ee arm from the rosparam server
-    std::vector<double> p_wrist_ee;
-    n.getParam("p_wrist_ee", p_wrist_ee);
-    p_wrist_ee_ = KDL::Vector(p_wrist_ee.at(0), p_wrist_ee.at(1), p_wrist_ee.at(2));
-
-    // Extend the default chain with a fake segment in order to evaluate
-    // Jacobians and forward kinematics with respect to a given reference point
-    // (typicallly the tool tip)
-    KDL::Joint fake_joint = KDL::Joint();
-    KDL::Frame frame(KDL::Rotation::Identity(), p_wrist_ee_);
-    KDL::Segment fake_segment(fake_joint, frame);
-    extended_chain_ = kdl_chain_;
-    extended_chain_.addSegment(fake_segment);
+    // add end-effector in kdl chain
+    extend_chain(n);
 
     // instantiate solvers
-    dyn_param_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
+    dyn_param_solver_.reset(new KDL::ChainDynParam(extended_chain_, gravity_));
     ik_solver_.reset(new KDL::ChainIkSolverPos_LMA(extended_chain_));
     ee_fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(extended_chain_));
     if (use_simulation_)
       {
-	jacobian_solver_.reset(new KDL::ChainJntToJacSolver(kdl_chain_));
-	fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(kdl_chain_));
+    	jacobian_solver_.reset(new KDL::ChainJntToJacSolver(kdl_chain_));
+    	fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(kdl_chain_));
       }
-
+    
     // set the default gains
     kp_ = DEFAULT_KP;
+    kp_a4_ = DEFAULT_KP_A4;
     kp_a5_ = DEFAULT_KP_A5;
     kp_a6_ = DEFAULT_KP_A6;
     kd_ = DEFAULT_KD;
+    kd_a4_ = DEFAULT_KD_A4;
+    kd_a5_ = DEFAULT_KD_A5;
+    kd_a6_ = DEFAULT_KD_A6;
 
     // set default trajectory duration
     p2p_traj_duration_ = FINAL_TIME;
@@ -103,14 +104,41 @@ namespace lwr_controllers {
 
     if(use_simulation_)
       {
-	// subscribe to force/torque sensor topic
-	// (simulation only since it is required to compensate for the mass tool,
-	// the real kuka compensate for mass tool internally)
-	sub_force_ = n.subscribe("/lwr/ft_sensor", 1,\
-				 &CartesianPositionController::ft_sensor_callback, this);
+    	// subscribe to force/torque sensor topic
+    	// (simulation only since it is required to compensate for the mass tool,
+    	// the real kuka compensate for mass tool internally)
+    	sub_force_ = n.subscribe("/lwr/ft_sensor", 1,\
+    				 &CartesianPositionController::ft_sensor_callback, this);
       }
-	
+
     return true;
+  }
+
+  void CartesianPositionController::load_calib_data(double& total_mass, KDL::Vector& p_sensor_tool_com)
+  {
+    std::string file_name = ros::package::getPath("lwr_force_position_controllers") +\
+      "/config/ft_calib_data.yaml";
+    YAML::Node ft_data_yaml = YAML::LoadFile(file_name);
+
+    std::vector<double> p_sensor_tool_com_vec(6);
+    // get data from the yaml file
+    double tool_mass = ft_data_yaml["gripper_mass"].as<double>();
+    p_sensor_tool_com_vec = ft_data_yaml["gripper_com_pose"].as<std::vector<double>>();
+
+    // transform to KDL
+    for (int i=0; i<3; i++)
+	p_sensor_tool_com.data[i] = p_sensor_tool_com_vec[i];
+
+    // compensate for additional items attached
+    double mass_sensor_support = 0.194;
+    double mass_sensor = 0.099;
+    total_mass = tool_mass + mass_sensor_support + mass_sensor;
+    
+    p_sensor_tool_com.x(tool_mass * p_sensor_tool_com.x() / total_mass);
+    p_sensor_tool_com.y(tool_mass * p_sensor_tool_com.y() / total_mass);
+    p_sensor_tool_com.z((mass_sensor_support * 0.013 + mass_sensor * 0.0335 + \
+			 tool_mass * (0.041 + p_sensor_tool_com.z())) / total_mass);
+
   }
 
   void CartesianPositionController::starting(const ros::Time& time)
@@ -149,7 +177,7 @@ namespace lwr_controllers {
 
     Eigen::MatrixXd fri_B (joint_handles_.size(), joint_handles_.size());
     update_fri_inertia_matrix(fri_B);
-  
+      
     // compute control law
     KDL::JntArray tau_cmd;
     KDL::JntArray q_error, qdot_error;
@@ -161,11 +189,14 @@ namespace lwr_controllers {
     for(size_t i=0; i<joint_handles_.size() ; i++)
       {
 	q_error(i) = traj_des_.q(i) - joint_msr_states_.q(i);
+	q_error(i) = angles::normalize_angle(q_error(i));
 	qdot_error(i) = traj_des_.qdot(i) - joint_msr_states_.qdot(i);
-	if(i == 5)
-	  tau_cmd(i) = kp_a5_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
+	if(i == 4)
+	  tau_cmd(i) = kp_a4_ * q_error(i) +  kd_a4_ * qdot_error(i) + traj_des_.qdotdot(i);
+	else if(i == 5)
+	  tau_cmd(i) = kp_a5_ * q_error(i) +  kd_a5_ * qdot_error(i) + traj_des_.qdotdot(i);
 	else if (i == 6)
-	  tau_cmd(i) = kp_a6_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
+	  tau_cmd(i) = kp_a6_ * q_error(i) +  kd_a6_ * qdot_error(i) + traj_des_.qdotdot(i);
 	else
 	  tau_cmd(i) = kp_ * q_error(i) +  kd_ * qdot_error(i) + traj_des_.qdotdot(i);
       }
@@ -182,28 +213,28 @@ namespace lwr_controllers {
     Eigen::Matrix<double, 6,1> base_F_wrist_;
     if (use_simulation_)
       {
-	////////////////////////////////////////////////////////////////////////////////
-	// evaluate the wrench applied to the wrist from the force/torque sensor
-	// and project it in the world frame (base)
-	// this is required to compensate for additional masses attached past the wrist
-	// (simulation only, the real kuka compensate for mass tool internally)
-	////////////////////////////////////////////////////////////////////////////////
-	//
+    	////////////////////////////////////////////////////////////////////////////////
+    	// evaluate the wrench applied to the wrist from the force/torque sensor
+    	// and project it in the world frame (base)
+    	// this is required to compensate for additional masses attached past the wrist
+    	// (simulation only, the real kuka compensate for mass tool internally)
+    	////////////////////////////////////////////////////////////////////////////////
+    	//
 	
-	// evaluate the current geometric jacobian J(q)
-	J_.resize(kdl_chain_.getNrOfJoints());
-	jacobian_solver_->JntToJac(joint_msr_states_.q, J_);
+    	// evaluate the current geometric jacobian J(q)
+    	J_.resize(kdl_chain_.getNrOfJoints());
+    	jacobian_solver_->JntToJac(joint_msr_states_.q, J_);
 	
-	// evaluate the forward kinematics required to project the wrench
-	KDL::Frame fk_frame;
-	KDL::Wrench base_wrench_wrist;
-	fk_solver_->JntToCart(joint_msr_states_.q, fk_frame);
-	base_wrench_wrist = fk_frame.M * wrench_wrist_;
+    	// evaluate the forward kinematics required to project the wrench
+    	KDL::Frame fk_frame;
+    	KDL::Wrench base_wrench_wrist;
+    	fk_solver_->JntToCart(joint_msr_states_.q, fk_frame);
+    	base_wrench_wrist = fk_frame.M * wrench_wrist_;
 	
-	// write down onto an eigen vector
-	tf::wrenchKDLToEigen(base_wrench_wrist, base_F_wrist_);      
-	//
-	///////////////////////////////////////////////////////////////////////////////
+    	// write down onto an eigen vector
+    	tf::wrenchKDLToEigen(base_wrench_wrist, base_F_wrist_);      
+    	//
+    	///////////////////////////////////////////////////////////////////////////////
       }
 
     // evaluate B * tau_cmd
@@ -211,13 +242,15 @@ namespace lwr_controllers {
     B_tau_cmd.resize(kdl_chain_.getNrOfJoints());
     if (use_simulation_)
       // use J * base_F_wrist as a way to compensate for the mass of the tool (simulation only)
-      B_tau_cmd.data = B.data * tau_cmd.data + C.data + J_.data.transpose() * base_F_wrist_;
+      B_tau_cmd.data = B.data * tau_cmd.data + C.data;
     else
-      B_tau_cmd.data = fri_B * tau_cmd.data;
+      // use kdl model in real scenario
+      B_tau_cmd.data = B.data * tau_cmd.data + C.data;
     
     // set joint efforts
     for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
       {
+	
 	joint_handles_[i].setCommand(B_tau_cmd(i));
 	
 	// required to exploit the JOINT IMPEDANCE MODE of the kuka manipulator
@@ -225,7 +258,7 @@ namespace lwr_controllers {
 	joint_damping_handles_[i].setCommand(0);
 	joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
       }
- 
+
     if(time > last_publish_time_ + ros::Duration(1.0 / publish_rate_))
       {
 	//update next tick
@@ -301,9 +334,13 @@ namespace lwr_controllers {
 						  lwr_force_position_controllers::CartesianPositionCommandGains::Response &res)
   {
     kp_ = req.command.kp;
+    kp_a4_ = req.command.kp_a4;
     kp_a5_ = req.command.kp_a5;
     kp_a6_ = req.command.kp_a6;
     kd_ = req.command.kd;
+    kd_a4_ = req.command.kd_a4;
+    kd_a5_ = req.command.kd_a5;
+    kd_a6_ = req.command.kd_a6;
     return true;
   }
 
@@ -345,9 +382,14 @@ namespace lwr_controllers {
   {
     // get desired gain
     res.command.kp = kp_;
+    res.command.kp_a4 = kp_a4_;
     res.command.kp_a5 = kp_a5_;
     res.command.kp_a6 = kp_a6_;
+
     res.command.kd = kd_;
+    res.command.kd_a4 = kd_a4_;
+    res.command.kd_a5 = kd_a5_;
+    res.command.kd_a6 = kd_a6_;
 
     return true;
   }
@@ -422,6 +464,38 @@ namespace lwr_controllers {
 	  2 * 3 * traj_a3_(i) * time_;
 
       }
+  }
+
+  void CartesianPositionController::extend_chain(ros::NodeHandle &n)
+  {
+    // get the p_wrist_ee arm from the rosparam server
+    std::vector<double> p_wrist_ee;
+    n.getParam("p_wrist_ee", p_wrist_ee);
+    p_wrist_ee_ = KDL::Vector(p_wrist_ee.at(0), p_wrist_ee.at(1), p_wrist_ee.at(2));
+
+    // Extend the default chain with a fake segment in order to evaluate
+    // Jacobians and forward kinematics with respect to a given reference point
+    // (typicallly the tool tip)
+    // also takes into account end effector mass and inertia
+    KDL::Joint fake_joint = KDL::Joint();
+    KDL::Frame frame(KDL::Rotation::Identity(), p_wrist_ee_);
+
+    double total_mass;
+    double fake_cylinder_radius  = 0.0475;
+    double fake_cylinder_height = 0.31;
+    KDL::Vector p_sensor_tool_com;
+    load_calib_data(total_mass, p_sensor_tool_com);
+        
+    double fake_cyl_i_xx = 1.0 / 12.0 * total_mass * (3 * pow(fake_cylinder_radius, 2) + \
+    						     pow(fake_cylinder_height, 2));
+    double fake_cyl_i_zz = 1.0 / 2.0 * total_mass * pow(fake_cylinder_radius, 2);
+
+    KDL::RotationalInertia rot_inertia(fake_cyl_i_xx, fake_cyl_i_xx, fake_cyl_i_zz);
+    KDL::RigidBodyInertia inertia(total_mass, p_sensor_tool_com, rot_inertia);
+
+    KDL::Segment fake_segment(fake_joint, frame, inertia);
+    extended_chain_ = kdl_chain_;
+    extended_chain_.addSegment(fake_segment);
   }
 
   void CartesianPositionController::print_joint_array(KDL::JntArray& array)

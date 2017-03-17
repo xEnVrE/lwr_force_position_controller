@@ -6,8 +6,10 @@
 #include <lwr_force_position_controllers/CartesianPositionCommandGainsMsg.h>
 #include <lwr_force_position_controllers/CartesianPositionCommandTraj.h>
 #include <lwr_force_position_controllers/CartesianPositionCommandTrajMsg.h>
+#include <std_srvs/Empty.h> 
 #include <geometry_msgs/WrenchStamped.h>
 #include <boost/scoped_ptr.hpp>
+#include <fstream>
 
 /*
   Cartesian Position Controller law is:
@@ -33,6 +35,7 @@ namespace lwr_controllers
     void update(const ros::Time& time, const ros::Duration& period);
 
   private:
+    void extend_chain(ros::NodeHandle &n);
     void ft_sensor_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void evaluate_traj_constants(KDL::Vector&, KDL::Rotation&);
     void evaluate_traj_des(const ros::Duration& period);
@@ -47,9 +50,11 @@ namespace lwr_controllers
     void publish_data(ros::Publisher& pub, KDL::JntArray& array);
     void print_joint_array(KDL::JntArray& array);
     void update_fri_inertia_matrix(Eigen::MatrixXd& fri_B);
+    void load_calib_data(double& tool_mass, KDL::Vector& p_sensor_tool_com);
     
     // joint position controller
-    double kp_, kp_a5_, kp_a6_, kd_;
+    double kp_, kp_a4_, kp_a5_, kp_a6_;
+    double kd_, kd_a4_, kd_a5_, kd_a6_;
    
     // inertia matrix and coriolis
     boost::scoped_ptr<KDL::ChainDynParam> dyn_param_solver_;

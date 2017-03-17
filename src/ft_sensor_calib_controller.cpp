@@ -33,6 +33,9 @@ namespace lwr_controllers {
     // get the calibration loop rate
     nh_.getParam("calibration_loop_rate", calibration_loop_rate_);
 
+    // get publish rate from rosparam
+    nh.getParam("publish_rate", publish_rate_);
+
     // reset ik solver
     ik_solver_.reset(new KDL::ChainIkSolverPos_LMA(kdl_chain_));
     
@@ -52,8 +55,15 @@ namespace lwr_controllers {
 						  &FtSensorCalibController::move_home_pose, this);
     save_calib_data_service_ = nh.advertiseService("save_calib_data",\
 						   &FtSensorCalibController::save_calib_data, this);
+    start_compensation_service_ = nh.advertiseService("start_compensation",\
+						   &FtSensorCalibController::start_compensation, this);
     do_estimation_step_service_ = nh.advertiseService("do_estimation_step",\
 						      &FtSensorCalibController::do_estimation_step, this);
+
+    // advertise topic
+    pub_ft_sensor_no_offset_ = nh.advertise<geometry_msgs::WrenchStamped>("ft_sensor_no_offset", 1);
+    pub_ft_sensor_no_gravity_ = nh.advertise<geometry_msgs::WrenchStamped>("ft_sensor_no_gravity", 1);
+
     // load calibration poses
     //get_calibration_poses(nh);
     get_calibration_q(nh);
@@ -70,30 +80,71 @@ namespace lwr_controllers {
     return true;
   }
 
-  void FtSensorCalibController::starting(const ros::Time& time) {}
+  void FtSensorCalibController::starting(const ros::Time& time) 
+  {
+    // initialize time
+    last_publish_time_ = time;
+  }
 
-  void FtSensorCalibController::update(const ros::Time& time, const ros::Duration& period) {}
+  void FtSensorCalibController::update(const ros::Time& time, const ros::Duration& period)
+  {
+    if(!do_compensation_)
+      return;
+
+    // do offset compensation
+    KDL::Wrench ft_wrench_no_offset;
+    ft_wrench_no_offset = ft_wrench_raw_ - offset_kdl_;
+    
+    //get the current robot configuration
+    for(size_t i=0; i<kdl_chain_.getNrOfJoints(); i++)
+      joint_msr_states_.q(i) = joint_handles_[i].getPosition();
+
+    // evaluate forward kinematics
+    KDL::Frame fk_frame;
+    KDL::Rotation R_ft_base; //rotation from base frame to ft frame
+    fk_solver_->JntToCart(joint_msr_states_.q, fk_frame);
+    R_ft_base = fk_frame.M.Inverse();
+
+    // compesante for tool weight
+    // move the reference point of the weight from the com of the tool to the wrist
+    KDL::Frame gravity_transformation(fk_frame.M.Inverse(),	\
+				      p_sensor_tool_com_kdl_);
+    // compensate for the weight of the tool
+    KDL::Wrench ft_wrench_no_gravity;
+    ft_wrench_no_gravity = ft_wrench_no_offset - gravity_transformation * base_tool_weight_com_;
+
+    if(time > last_publish_time_ + ros::Duration(1.0 / publish_rate_))
+      {
+	//update next tick
+	last_publish_time_ += ros::Duration(1.0 / publish_rate_);
+
+	publish_data(ft_wrench_no_offset, pub_ft_sensor_no_offset_);
+	publish_data(ft_wrench_no_gravity, pub_ft_sensor_no_gravity_);
+      }
+    
+    
+  }
 
   void FtSensorCalibController::ft_raw_topic_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg)
   {
     tf::wrenchMsgToKDL(msg->wrench, ft_wrench_raw_);
   }
 
-  void FtSensorCalibController::get_calibration_poses(ros::NodeHandle nh)
-  {
-    nh.getParam("calib_number_q", number_of_poses_);
-    for (int i=0; i<number_of_poses_; i++)
-      {
-	std::vector<double> pose;
-	nh.getParam("calib_poses/pose" + std::to_string(i), pose);
-	ft_calib_poses_.push_back(KDL::Frame(KDL::Rotation::EulerZYX(pose.at(3), pose.at(4), pose.at(5)),
-					     KDL::Vector(pose.at(0), pose.at(1), pose.at(2))));
-      }
-  }
+  // void FtSensorCalibController::get_calibration_poses(ros::NodeHandle nh)
+  // {
+  //   nh.getParam("calib_number_q", number_of_poses_);
+  //   for (int i=0; i<number_of_poses_; i++)
+  //     {
+  // 	std::vector<double> pose;
+  // 	nh.getParam("calib_poses/pose" + std::to_string(i), pose);
+  // 	ft_calib_poses_.push_back(KDL::Frame(KDL::Rotation::EulerZYX(pose.at(3), pose.at(4), pose.at(5)),
+  // 					     KDL::Vector(pose.at(0), pose.at(1), pose.at(2))));
+  //     }
+  // }
 
   void FtSensorCalibController::get_calibration_q(ros::NodeHandle nh)
   {
-    nh.getParam("calib_number_poses", number_of_poses_);
+    nh.getParam("calib_number_q", number_of_poses_);
     for (int i=0; i<number_of_poses_; i++)
       {
   	std::vector<double> q;
@@ -116,7 +167,7 @@ namespace lwr_controllers {
     traj_msg.joint_names.push_back("lwr_a6_joint");
     for (int i = 0; i < kdl_chain_.getNrOfJoints(); ++i)
       point.positions.push_back(q_des.at(i));
-    point.time_from_start = ros::Duration(1);
+    point.time_from_start = ros::Duration(5);
     traj_msg.points.push_back(point);
     pub_joint_traj_ctl_.publish(traj_msg);
   }
@@ -131,8 +182,12 @@ namespace lwr_controllers {
   bool FtSensorCalibController::move_next_calib_pose(std_srvs::Empty::Request& req,\
 						     std_srvs::Empty::Response& res)
   {
-    if (number_of_poses_ == pose_counter_)
-      return true;
+    if (number_of_poses_ <= pose_counter_)
+      {
+	pose_counter_++;
+	std::cout << "Manual pose " << pose_counter_ << std::endl;
+	return true;
+      }
 
     std::cout << "Sending pose " << pose_counter_ << " to joint_trajectory_controller" << std::endl;
 
@@ -200,7 +255,6 @@ namespace lwr_controllers {
     // evaluate the gravity as if it was measured by an IMU
     // whose reference frame is aligned with vito_anchor
     KDL::Vector gravity(0, 0, -G_FORCE);
-    gravity = KDL::Vector::Zero() - gravity; // Zero() is the linear acceleration
 
     // rotate the gravity in ft frame
     KDL::Vector gravity_ft;
@@ -213,7 +267,7 @@ namespace lwr_controllers {
     add_measurement(gravity_ft, ft_raw_avg);
 
     // save data to allow data recovery if needed
-    save_calib_meas(gravity_ft, ft_raw_avg, pose_counter_);
+    save_calib_meas(gravity_ft, ft_raw_avg, pose_counter_, joint_msr_states_.q);
 
     // get current estimation
     Eigen::VectorXd ft_calib = ft_calib_->getCalib();
@@ -286,7 +340,8 @@ namespace lwr_controllers {
     std::cout << "Recovered calibration data for " << number << " poses" << std::endl;
   }
 
-  void FtSensorCalibController::save_calib_meas(KDL::Vector gravity, KDL::Wrench ft_wrench_avg, int index)
+  void FtSensorCalibController::save_calib_meas(KDL::Vector gravity, KDL::Wrench ft_wrench_avg, int index,\
+						KDL::JntArray q_kdl)
   {
     std::string file_name = ros::package::getPath("lwr_force_position_controllers") + \
       "/config/ft_calib_meas.yaml";
@@ -295,17 +350,21 @@ namespace lwr_controllers {
     std::vector<double> gravity_vec(3);
     std::vector<double> ft_force_avg(3);
     std::vector<double> ft_torque_avg(3);
+    std::vector<double> q(7);
     for (int i=0; i<3; i++)
       {
 	gravity_vec[i] = gravity.data[i];
 	ft_force_avg[i] = ft_wrench_avg.force.data[i];
 	ft_torque_avg[i] = ft_wrench_avg.torque.data[i];
       }
+    for (int i=0; i<7; i++)
+      q[i] = q_kdl(i);
 
     ft_data_yaml["calib_meas_number"] = index;
     ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["gravity"] = gravity_vec;
     ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["force_avg"] = ft_force_avg;
     ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["torque_avg"] = ft_torque_avg;
+    ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["q"] = q;
 
     std::ofstream yaml_out(file_name);
     yaml_out << ft_data_yaml;
@@ -343,6 +402,63 @@ namespace lwr_controllers {
     yaml_out << ft_data_yaml;
 
     return true;
+  }
+
+  bool FtSensorCalibController::load_calib_data()
+  {
+    std::string file_name = ros::package::getPath("lwr_force_position_controllers") +\
+      "/config/ft_calib_data.yaml";
+    YAML::Node ft_data_yaml = YAML::LoadFile(file_name);
+
+    std::vector<double> p_sensor_tool_com(6);
+    std::vector<double> offset(6);
+
+    // get data from the yaml file
+    tool_mass_ = ft_data_yaml["gripper_mass"].as<double>();
+    p_sensor_tool_com = ft_data_yaml["gripper_com_pose"].as<std::vector<double>>();
+    offset = ft_data_yaml["bias"].as<std::vector<double>>();
+
+    // evaluate end-effector weight
+    base_tool_weight_com_ = KDL::Wrench(KDL::Vector(0, 0, -tool_mass_ * G_FORCE),\
+					KDL::Vector::Zero());
+
+    // transform to KDL
+    for (int i=0; i<3; i++)
+      {
+	p_sensor_tool_com_kdl_.data[i] = p_sensor_tool_com[i];
+	offset_kdl_.force.data[i] = offset[i];
+	offset_kdl_.torque.data[i] = offset[i + 3];
+      }
+
+    return true;
+  }
+
+  bool FtSensorCalibController::start_compensation(std_srvs::Empty::Request& req,\
+						   std_srvs::Empty::Response& res)
+  {
+    // load calibration data from yaml file
+    load_calib_data();
+
+    // enable offset and gravity compensation
+    do_compensation_ = true;
+
+    return true;
+  }
+
+  void FtSensorCalibController::publish_data(KDL::Wrench wrench, ros::Publisher& pub)
+  {
+    // create the message
+    geometry_msgs::WrenchStamped wrench_msg;
+    wrench_msg.header.stamp = ros::Time::now();
+    wrench_msg.wrench.force.x = wrench.force.x(); 
+    wrench_msg.wrench.force.y = wrench.force.y(); 
+    wrench_msg.wrench.force.z = wrench.force.z(); 
+    wrench_msg.wrench.torque.x = wrench.torque.x(); 
+    wrench_msg.wrench.torque.y = wrench.torque.y(); 
+    wrench_msg.wrench.torque.z = wrench.torque.z();
+    
+    // publish the message
+    pub.publish(wrench_msg);
   }
 
 } // namespace

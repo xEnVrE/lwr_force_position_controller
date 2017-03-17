@@ -26,17 +26,19 @@ namespace lwr_controllers
     void starting(const ros::Time& time);
     void update(const ros::Time& time, const ros::Duration& period);
 
-    void get_gains_im(double& kp_z, double& kp_att, double& kd);
-    void set_gains_im(double kp_z, double kp_att, double kd);
+    void get_gains_im(double& kp_z, double& kp_gamma, double& kd_pos, double& kd_att);
+    void set_gains_im(double kp_z, double kp_gamma, double kd_pos, double kd_att);
     void set_p_wrist_ee(double x, double y, double z);
     void set_ft_sensor_topic_name(std::string topic);
     void set_p_base_ws(double x, double y, double z);
     void set_ws_base_angles(double alpha, double beta, double gamma);
     void set_command(Eigen::VectorXd& commanded_acceleration);
+    void load_calib_data(double& total_mass, KDL::Vector& p_sensor_tool_com);
 
   private:
     void force_torque_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void update_fri_inertia_matrix(Eigen::MatrixXd& fri_B);
+    void extend_chain(ros::NodeHandle &n);
 
     // syntax:
     //
@@ -65,26 +67,25 @@ namespace lwr_controllers
     boost::scoped_ptr<KDL::ChainJntToJacSolver> ee_jacobian_solver_, wrist_jacobian_solver_;
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> ee_fk_solver_;
     boost::scoped_ptr<KDL::ChainJntToJacDotSolver> ee_jacobian_dot_solver_;
-    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_a4_jacobian_solver_;
-    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_a4_fk_solver_;
-    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_a5_jacobian_solver_;
-    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_a5_fk_solver_;
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_link4_jacobian_solver_;
+    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_link4_fk_solver_;
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> im_link5_jacobian_solver_;
+    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> im_link5_fk_solver_;
 
     // chain required to move the reference point of jacobians
     KDL::Chain extended_chain_;
     // chain required to control internal motion
-    KDL::Chain im_a4_chain_;
-    KDL::Chain im_a5_chain_;
+    KDL::Chain im_link4_chain_;
+    KDL::Chain im_link5_chain_;
 
     // these matrices are sparse and initialized in init()
     Eigen::MatrixXd ws_TA_, ws_TA_dot_;
-    Eigen::MatrixXd base_TA_im_a5_;
+    Eigen::MatrixXd base_TA_im_link5_;
 
     // null space controller gains
     Eigen::Matrix<double, 6, 6> Kp_im_;
     Eigen::Matrix<double, 6, 6> Kd_im_;
-
-    double gamma_im_a5_initial_;
+    double gamma_im_link5_initial_;
 
     // commandss
     Eigen::VectorXd tau_fri_;
