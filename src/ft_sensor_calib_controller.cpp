@@ -130,21 +130,21 @@ namespace lwr_controllers {
     tf::wrenchMsgToKDL(msg->wrench, ft_wrench_raw_);
   }
 
-  void FtSensorCalibController::get_calibration_poses(ros::NodeHandle nh)
-  {
-    nh.getParam("calib_number_q", number_of_poses_);
-    for (int i=0; i<number_of_poses_; i++)
-      {
-	std::vector<double> pose;
-	nh.getParam("calib_poses/pose" + std::to_string(i), pose);
-	ft_calib_poses_.push_back(KDL::Frame(KDL::Rotation::EulerZYX(pose.at(3), pose.at(4), pose.at(5)),
-					     KDL::Vector(pose.at(0), pose.at(1), pose.at(2))));
-      }
-  }
+  // void FtSensorCalibController::get_calibration_poses(ros::NodeHandle nh)
+  // {
+  //   nh.getParam("calib_number_q", number_of_poses_);
+  //   for (int i=0; i<number_of_poses_; i++)
+  //     {
+  // 	std::vector<double> pose;
+  // 	nh.getParam("calib_poses/pose" + std::to_string(i), pose);
+  // 	ft_calib_poses_.push_back(KDL::Frame(KDL::Rotation::EulerZYX(pose.at(3), pose.at(4), pose.at(5)),
+  // 					     KDL::Vector(pose.at(0), pose.at(1), pose.at(2))));
+  //     }
+  // }
 
   void FtSensorCalibController::get_calibration_q(ros::NodeHandle nh)
   {
-    nh.getParam("calib_number_poses", number_of_poses_);
+    nh.getParam("calib_number_q", number_of_poses_);
     for (int i=0; i<number_of_poses_; i++)
       {
   	std::vector<double> q;
