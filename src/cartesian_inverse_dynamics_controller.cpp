@@ -386,10 +386,8 @@ namespace lwr_controllers {
       tau_fri_ = C.data + base_J_wrist.data.transpose() * \
     	(base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
     else
-      // tau_fri_ = C.data + base_J_wrist.data.transpose() *		\
-      // 	(base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
-      tau_fri_ = C.data + base_J_wrist.data.transpose() *	\
-	(- BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
+      tau_fri_ = C.data + base_J_wrist.data.transpose() * \
+      	(base_F_wrist - BA * ws_JA_ee_dot * joint_msr_states_.qdot.data);
 
     command_filter_ = base_J_wrist.data.transpose() * BA;
     
