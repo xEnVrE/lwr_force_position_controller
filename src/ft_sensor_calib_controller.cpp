@@ -428,7 +428,7 @@ namespace lwr_controllers {
     for (int i=0; i<7; i++)
       q[i] = q_kdl(i);
 
-    ft_data_yaml["calib_meas_number"] = index;
+    ft_data_yaml["calib_meas_number"] = index + 1;
     ft_data_yaml["calib_meas"]["pose" + std::to_string(index)]["gravity"] = gravity_vec;
     ft_data_yaml["calib_meas"]["pose" + std::to_string(index)]["force_avg"] = ft_force_avg;
     ft_data_yaml["calib_meas"]["pose" + std::to_string(index)]["torque_avg"] = ft_torque_avg;
