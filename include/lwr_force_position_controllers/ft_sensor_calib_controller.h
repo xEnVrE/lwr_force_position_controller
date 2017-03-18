@@ -23,32 +23,31 @@ namespace lwr_controllers
     void update(const ros::Time& time, const ros::Duration& period);
     
   private:
-    void ft_raw_topic_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
-
-    bool move_next_calib_pose(std_srvs::Empty::Request&,\
-			      std_srvs::Empty::Response&);
+    // services
     bool move_home_pose(std_srvs::Empty::Request&,\
 			std_srvs::Empty::Response&);
+    bool save_calib_data(std_srvs::Empty::Request&,\
+		      std_srvs::Empty::Response&);
+    bool move_next_calib_pose(std_srvs::Empty::Request&,\
+			      std_srvs::Empty::Response&);
+    bool do_estimation_step(std_srvs::Empty::Request&,\
+		      std_srvs::Empty::Response&);
+    bool start_autonomus_estimation(std_srvs::Empty::Request&, \
+				    std_srvs::Empty::Response&);
+    bool start_compensation(std_srvs::Empty::Request&,\
+			    std_srvs::Empty::Response&);
+
+    void ft_raw_topic_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
     void send_joint_trajectory_msg(std::vector<double> q_des);
     void get_calibration_poses(ros::NodeHandle);
     void get_calibration_q(ros::NodeHandle nh);
-
-    bool save_calib_data(std_srvs::Empty::Request&,\
-		      std_srvs::Empty::Response&);
     bool load_calib_data();
-
-    bool start_compensation(std_srvs::Empty::Request&,\
-			    std_srvs::Empty::Response&);
     void recover_existing_data();
     void save_calib_meas(KDL::Vector gravity, KDL::Wrench ft_wrench_avg, int index,\
 			 KDL::JntArray q);
-
-    bool do_estimation_step(std_srvs::Empty::Request&,\
-		      std_srvs::Empty::Response&);
     void add_measurement(KDL::Vector gravity_ft, KDL::Wrench ft_raw_avg);
-
     void publish_data(KDL::Wrench wrench, ros::Publisher& pub);
-
+    void estimation_step();
 
     KDL::Wrench ft_wrench_raw_;
     KDL::Wrench offset_kdl_;
@@ -68,7 +67,7 @@ namespace lwr_controllers
     ros::ServiceServer do_estimation_step_service_;
     ros::ServiceServer save_calib_data_service_;
     ros::ServiceServer start_compensation_service_;
-
+    ros::ServiceServer start_autonomus_estimation_service_;
     ros::Subscriber sub_ft_sensor_;
     ros::Publisher pub_joint_traj_ctl_;
     ros::Publisher pub_ft_sensor_no_offset_;
@@ -81,6 +80,9 @@ namespace lwr_controllers
     double calibration_loop_rate_;
     double publish_rate_;
     double tool_mass_;
+    
+    // duration for joint trajectory
+    double p2p_traj_duration_;
 
     int pose_counter_;
     int number_of_poses_;

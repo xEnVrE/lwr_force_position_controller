@@ -35,6 +35,7 @@ lwr:
     tip_name: lwr_7_link
     topic_name: /lwr/ft_sensor
     calibration_loop_rate: 500.0
+    p2p_traj_duration: 5.0
     recover_existing_data: false
     publish_rate: 1000 #Hz
 

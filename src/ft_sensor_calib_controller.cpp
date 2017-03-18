@@ -36,6 +36,9 @@ namespace lwr_controllers {
     // get publish rate from rosparam
     nh.getParam("publish_rate", publish_rate_);
 
+    // get the trajectory duration from rosparam
+    nh.getParam("p2p_traj_duration", p2p_traj_duration_);
+
     // reset ik solver
     ik_solver_.reset(new KDL::ChainIkSolverPos_LMA(kdl_chain_));
     
@@ -59,6 +62,8 @@ namespace lwr_controllers {
 						   &FtSensorCalibController::start_compensation, this);
     do_estimation_step_service_ = nh.advertiseService("do_estimation_step",\
 						      &FtSensorCalibController::do_estimation_step, this);
+    start_autonomus_estimation_service_ = nh.advertiseService("start_autonomus_estimation",\
+							      &FtSensorCalibController::start_autonomus_estimation, this);
 
     // advertise topic
     pub_ft_sensor_no_offset_ = nh.advertise<geometry_msgs::WrenchStamped>("ft_sensor_no_offset", 1);
@@ -121,8 +126,6 @@ namespace lwr_controllers {
 	publish_data(ft_wrench_no_offset, pub_ft_sensor_no_offset_);
 	publish_data(ft_wrench_no_gravity, pub_ft_sensor_no_gravity_);
       }
-    
-    
   }
 
   void FtSensorCalibController::ft_raw_topic_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg)
@@ -167,7 +170,7 @@ namespace lwr_controllers {
     traj_msg.joint_names.push_back("lwr_a6_joint");
     for (int i = 0; i < kdl_chain_.getNrOfJoints(); ++i)
       point.positions.push_back(q_des.at(i));
-    point.time_from_start = ros::Duration(5);
+    point.time_from_start = ros::Duration(p2p_traj_duration_);
     traj_msg.points.push_back(point);
     pub_joint_traj_ctl_.publish(traj_msg);
   }
@@ -184,7 +187,6 @@ namespace lwr_controllers {
   {
     if (number_of_poses_ <= pose_counter_)
       {
-	pose_counter_++;
 	std::cout << "Manual pose " << pose_counter_ << std::endl;
 	return true;
       }
@@ -192,8 +194,6 @@ namespace lwr_controllers {
     std::cout << "Sending pose " << pose_counter_ << " to joint_trajectory_controller" << std::endl;
 
     send_joint_trajectory_msg(ft_calib_q_.at(pose_counter_));
-
-    pose_counter_++;
 
     return true;
   }
@@ -223,9 +223,66 @@ namespace lwr_controllers {
     ft_calib_->addMeasurement(gravity_msg, ft_avg_msg);
   }
 
+  bool FtSensorCalibController::start_autonomus_estimation(std_srvs::Empty::Request& req,\
+							   std_srvs::Empty::Response& res)
+  {
+    ros::Duration wait = ros::Duration(p2p_traj_duration_ + 2);
+    for(int i = 0; i<number_of_poses_; i++)
+      {
 
-  bool FtSensorCalibController::do_estimation_step(std_srvs::Empty::Request& req,\
-						   std_srvs::Empty::Response& res)
+	// move robot
+	std::cout << "Sending pose " << i << " to joint_trajectory_controller" << std::endl;
+	send_joint_trajectory_msg(ft_calib_q_.at(i));
+
+	// wait for trajectory end
+	wait.sleep();
+
+	// do a step of the estimation proces
+	estimation_step();
+	std::cout << "estimation n.: " << i << std::endl; 
+
+	// update counter
+	pose_counter_ = i;
+      }
+
+    // get current estimation
+    Eigen::VectorXd ft_calib = ft_calib_->getCalib();
+
+    tool_mass_ = ft_calib(0);
+
+    p_sensor_tool_com_(0) = ft_calib(1) / tool_mass_;
+    p_sensor_tool_com_(1) = ft_calib(2) / tool_mass_;
+    p_sensor_tool_com_(2) = ft_calib(3) / tool_mass_;
+
+    ft_offset_force_(0) = -ft_calib(4);
+    ft_offset_force_(1) = -ft_calib(5);
+    ft_offset_force_(2) = -ft_calib(6);
+
+    ft_offset_torque_(0) = -ft_calib(7);
+    ft_offset_torque_(1) = -ft_calib(8);
+    ft_offset_torque_(2) = -ft_calib(9);
+
+    // print the current estimation
+    std::cout << "-------------------------------------------------------------" << std::endl;
+    std::cout << "Current calibration estimate:" << std::endl;
+    std::cout << std::endl << std::endl;
+
+    std::cout << "Mass: " << tool_mass_ << std::endl << std::endl;
+
+    std::cout << "Tool CoM (in ft sensor frame):" << std::endl;
+    std::cout << "[" << p_sensor_tool_com_(0) << ", " << p_sensor_tool_com_(1) << ", " << p_sensor_tool_com_(2) << "]";
+    std::cout << std::endl << std::endl;
+
+    std::cout << "FT offset: " << std::endl;
+    std::cout << "[" << ft_offset_force_(0) << ", " << ft_offset_force_(1) << ", " << ft_offset_force_(2) << ", ";
+    std::cout << ft_offset_torque_(0) << ", " << ft_offset_torque_(1) << ", " << ft_offset_torque_(2) << "]";
+    std::cout << std::endl << std::endl;
+    std::cout << "-------------------------------------------------------------" << std::endl << std::endl << std::endl;
+
+    return true;
+  }
+
+  void FtSensorCalibController::estimation_step()
   {
     ros::Rate loop_rate(calibration_loop_rate_);
     int number_measurements = 100;
@@ -269,6 +326,17 @@ namespace lwr_controllers {
     // save data to allow data recovery if needed
     save_calib_meas(gravity_ft, ft_raw_avg, pose_counter_, joint_msr_states_.q);
 
+  }
+
+  bool FtSensorCalibController::do_estimation_step(std_srvs::Empty::Request& req,\
+						   std_srvs::Empty::Response& res)
+  {
+    // do a step of the estimation proces
+    estimation_step();
+    
+    // update pose_counter
+    pose_counter_++;
+    
     // get current estimation
     Eigen::VectorXd ft_calib = ft_calib_->getCalib();
 
@@ -361,10 +429,10 @@ namespace lwr_controllers {
       q[i] = q_kdl(i);
 
     ft_data_yaml["calib_meas_number"] = index;
-    ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["gravity"] = gravity_vec;
-    ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["force_avg"] = ft_force_avg;
-    ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["torque_avg"] = ft_torque_avg;
-    ft_data_yaml["calib_meas"]["pose" + std::to_string(index-1)]["q"] = q;
+    ft_data_yaml["calib_meas"]["pose" + std::to_string(index)]["gravity"] = gravity_vec;
+    ft_data_yaml["calib_meas"]["pose" + std::to_string(index)]["force_avg"] = ft_force_avg;
+    ft_data_yaml["calib_meas"]["pose" + std::to_string(index)]["torque_avg"] = ft_torque_avg;
+    ft_data_yaml["calib_meas"]["pose" + std::to_string(index)]["q"] = q;
 
     std::ofstream yaml_out(file_name);
     yaml_out << ft_data_yaml;
