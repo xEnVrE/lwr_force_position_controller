@@ -33,6 +33,7 @@ lwr:
     type: lwr_force_position_controllers/FtSensorCalibController
     root_name: vito_anchor
     tip_name: lwr_7_link
+    p2p_traj_duration: 5.0
     topic_name: /my_sensor/ft_sensor_hw/my_sensor
     calibration_loop_rate: 500.0
     recover_existing_data: false
