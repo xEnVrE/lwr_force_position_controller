@@ -10,6 +10,8 @@
 #include <yaml-cpp/yaml.h>
 #include <geometry_msgs/Vector3Stamped.h>
 #include <geometry_msgs/WrenchStamped.h>
+//DEBUG DATA
+#include <fstream>
 
 #define G_FORCE 9.80665
 
@@ -226,10 +228,9 @@ namespace lwr_controllers {
   bool FtSensorCalibController::start_autonomus_estimation(std_srvs::Empty::Request& req,\
 							   std_srvs::Empty::Response& res)
   {
-    ros::Duration wait = ros::Duration(p2p_traj_duration_ + 2);
+    ros::Duration wait = ros::Duration(p2p_traj_duration_ + 4);
     for(int i = 0; i<number_of_poses_; i++)
       {
-
 	// move robot
 	std::cout << "Sending pose " << i << " to joint_trajectory_controller" << std::endl;
 	send_joint_trajectory_msg(ft_calib_q_.at(i));
@@ -238,47 +239,17 @@ namespace lwr_controllers {
 	wait.sleep();
 
 	// do a step of the estimation proces
+	std::cout << "Estimation n.: " << i << std::endl; 
 	estimation_step();
-	std::cout << "estimation n.: " << i << std::endl; 
 
 	// update counter
 	pose_counter_ = i;
+
+	//save estimation data
+	save_debug_data();
       }
 
-    // get current estimation
-    Eigen::VectorXd ft_calib = ft_calib_->getCalib();
-
-    tool_mass_ = ft_calib(0);
-
-    p_sensor_tool_com_(0) = ft_calib(1) / tool_mass_;
-    p_sensor_tool_com_(1) = ft_calib(2) / tool_mass_;
-    p_sensor_tool_com_(2) = ft_calib(3) / tool_mass_;
-
-    ft_offset_force_(0) = -ft_calib(4);
-    ft_offset_force_(1) = -ft_calib(5);
-    ft_offset_force_(2) = -ft_calib(6);
-
-    ft_offset_torque_(0) = -ft_calib(7);
-    ft_offset_torque_(1) = -ft_calib(8);
-    ft_offset_torque_(2) = -ft_calib(9);
-
-    // print the current estimation
-    std::cout << "-------------------------------------------------------------" << std::endl;
-    std::cout << "Current calibration estimate:" << std::endl;
-    std::cout << std::endl << std::endl;
-
-    std::cout << "Mass: " << tool_mass_ << std::endl << std::endl;
-
-    std::cout << "Tool CoM (in ft sensor frame):" << std::endl;
-    std::cout << "[" << p_sensor_tool_com_(0) << ", " << p_sensor_tool_com_(1) << ", " << p_sensor_tool_com_(2) << "]";
-    std::cout << std::endl << std::endl;
-
-    std::cout << "FT offset: " << std::endl;
-    std::cout << "[" << ft_offset_force_(0) << ", " << ft_offset_force_(1) << ", " << ft_offset_force_(2) << ", ";
-    std::cout << ft_offset_torque_(0) << ", " << ft_offset_torque_(1) << ", " << ft_offset_torque_(2) << "]";
-    std::cout << std::endl << std::endl;
-    std::cout << "-------------------------------------------------------------" << std::endl << std::endl << std::endl;
-
+    std::cout << "Finish estimation process"<< std::endl; 
     return true;
   }
 
@@ -326,17 +297,6 @@ namespace lwr_controllers {
     // save data to allow data recovery if needed
     save_calib_meas(gravity_ft, ft_raw_avg, pose_counter_, joint_msr_states_.q);
 
-  }
-
-  bool FtSensorCalibController::do_estimation_step(std_srvs::Empty::Request& req,\
-						   std_srvs::Empty::Response& res)
-  {
-    // do a step of the estimation proces
-    estimation_step();
-    
-    // update pose_counter
-    pose_counter_++;
-    
     // get current estimation
     Eigen::VectorXd ft_calib = ft_calib_->getCalib();
 
@@ -353,23 +313,19 @@ namespace lwr_controllers {
     ft_offset_torque_(0) = -ft_calib(7);
     ft_offset_torque_(1) = -ft_calib(8);
     ft_offset_torque_(2) = -ft_calib(9);
+  }
+
+  bool FtSensorCalibController::do_estimation_step(std_srvs::Empty::Request& req,\
+						   std_srvs::Empty::Response& res)
+  {
+    // do a step of the estimation proces
+    estimation_step();
     
-    // print the current estimation
-    std::cout << "-------------------------------------------------------------" << std::endl;
-    std::cout << "Current calibration estimate:" << std::endl;
-    std::cout << std::endl << std::endl;
+    // update pose_counter
+    pose_counter_++;
 
-    std::cout << "Mass: " << tool_mass_ << std::endl << std::endl;
-
-    std::cout << "Tool CoM (in ft sensor frame):" << std::endl;
-    std::cout << "[" << p_sensor_tool_com_(0) << ", " << p_sensor_tool_com_(1) << ", " << p_sensor_tool_com_(2) << "]";
-    std::cout << std::endl << std::endl;
-
-    std::cout << "FT offset: " << std::endl;
-    std::cout << "[" << ft_offset_force_(0) << ", " << ft_offset_force_(1) << ", " << ft_offset_force_(2) << ", ";
-    std::cout << ft_offset_torque_(0) << ", " << ft_offset_torque_(1) << ", " << ft_offset_torque_(2) << "]";
-    std::cout << std::endl << std::endl;
-    std::cout << "-------------------------------------------------------------" << std::endl << std::endl << std::endl;
+    // save estimation data
+    save_debug_data();
 
     return true;
   }
@@ -470,6 +426,42 @@ namespace lwr_controllers {
     yaml_out << ft_data_yaml;
 
     return true;
+  }
+
+  void FtSensorCalibController::save_debug_data()
+  {
+    // save current estimation
+    std::string filename = ros::package::getPath("lwr_force_position_controllers") + \
+      "/config/data_estimation.txt";
+
+    std::ofstream data_file;
+
+    data_file.open (filename, std::ios::out | std::ios::app);
+
+    data_file << pose_counter_ << ", " << tool_mass_ << ", " \
+	      << p_sensor_tool_com_(0) << ", " << p_sensor_tool_com_(1) << ", " << p_sensor_tool_com_(2) << ", " \
+	      << ft_offset_force_(0) << ", " << ft_offset_force_(1) << ", " << ft_offset_force_(2) << ", " \
+	      << ft_offset_torque_(0) << ", " << ft_offset_torque_(1) << ", " << ft_offset_torque_(2) << std::endl;
+
+    data_file.close();
+
+    // print the current estimation
+    std::cout << "-------------------------------------------------------------" << std::endl;
+    std::cout << "Current calibration estimate:" << std::endl;
+    std::cout << std::endl << std::endl;
+
+    std::cout << "Mass: " << tool_mass_ << std::endl << std::endl;
+
+    std::cout << "Tool CoM (in ft sensor frame):" << std::endl;
+    std::cout << "[" << p_sensor_tool_com_(0) << ", " << p_sensor_tool_com_(1) << ", " << p_sensor_tool_com_(2) << "]";
+    std::cout << std::endl << std::endl;
+
+    std::cout << "FT offset: " << std::endl;
+    std::cout << "[" << ft_offset_force_(0) << ", " << ft_offset_force_(1) << ", " << ft_offset_force_(2) << ", ";
+    std::cout << ft_offset_torque_(0) << ", " << ft_offset_torque_(1) << ", " << ft_offset_torque_(2) << "]";
+    std::cout << std::endl << std::endl;
+    std::cout << "-------------------------------------------------------------" << std::endl << std::endl << std::endl;
+
   }
 
   bool FtSensorCalibController::load_calib_data()

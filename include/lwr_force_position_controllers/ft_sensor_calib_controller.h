@@ -48,6 +48,7 @@ namespace lwr_controllers
     void add_measurement(KDL::Vector gravity_ft, KDL::Wrench ft_raw_avg);
     void publish_data(KDL::Wrench wrench, ros::Publisher& pub);
     void estimation_step();
+    void save_debug_data();
 
     KDL::Wrench ft_wrench_raw_;
     KDL::Wrench offset_kdl_;
