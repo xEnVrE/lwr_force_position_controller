@@ -9,6 +9,8 @@
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 #include <std_srvs/Empty.h>
 #include <ft_calib/ft_calib.h>
+#include <kdl/chainjnttojacsolver.hpp>
+#include <kdljacdot/chainjnttojacdotsolver.hpp>
 
 namespace lwr_controllers
 {
@@ -49,14 +51,19 @@ namespace lwr_controllers
     void publish_data(KDL::Wrench wrench, ros::Publisher& pub);
     void estimation_step();
     void save_debug_data();
+    void extend_chain();
 
     KDL::Wrench ft_wrench_raw_;
     KDL::Wrench offset_kdl_;
     KDL::Wrench base_tool_weight_com_;
     KDL::Vector p_sensor_tool_com_kdl_;
+    KDL::JntArray qdot_prev_;
+    KDL::Chain extended_chain_;
 
     boost::scoped_ptr<KDL::ChainIkSolverPos_LMA> ik_solver_;
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> fk_solver_;
+    boost::scoped_ptr<KDL::ChainJntToJacDotSolver> jacobian_dot_solver_;
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> jacobian_solver_;
     boost::scoped_ptr<Calibration::FTCalib> ft_calib_;
 
     std::vector<KDL::Frame> ft_calib_poses_;
