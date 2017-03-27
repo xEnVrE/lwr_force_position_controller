@@ -7,6 +7,7 @@
 #include <ros/package.h>
 #include <yaml-cpp/yaml.h>
 #include <lwr_force_position_controllers/cartesian_inverse_dynamics_controller.h>
+#include <lwr_force_position_controllers/CartesianInverseTorquesMsg.h>
 
 #define DEFAULT_KP_IM_LINK4 0.001
 #define DEFAULT_KP_IM_LINK5 3
@@ -93,6 +94,9 @@ namespace lwr_controllers {
     // subscribe to force/torque sensor topic
     sub_force_ = n.subscribe(ft_sensor_topic_name_, 1, \
 			     &CartesianInverseDynamicsController::force_torque_callback, this);
+
+    // advertise topics
+    pub_torques_ = n.advertise<lwr_force_position_controllers::CartesianInverseTorquesMsg>("torques", 1000);
 
     return true;
   }
@@ -490,6 +494,20 @@ namespace lwr_controllers {
 	joint_damping_handles_[i].setCommand(0);
 	joint_set_point_handles_[i].setCommand(joint_msr_states_.q(i));
       }
+  }
+
+  void CartesianInverseDynamicsController::publish_torques()
+  {
+    lwr_force_position_controllers::CartesianInverseTorquesMsg msg;
+    msg.header.stamp = ros::Time::now();
+    msg.a1 = tau_fri_(0);
+    msg.a2 = tau_fri_(1);
+    msg.e1 = tau_fri_(2);
+    msg.a3 = tau_fri_(3);
+    msg.a4 = tau_fri_(4);
+    msg.a5 = tau_fri_(5);
+    msg.a6 = tau_fri_(6);
+    pub_torques_.publish(msg);
   }
 
   void CartesianInverseDynamicsController::load_calib_data(double& total_mass, KDL::Vector& p_sensor_tool_com)

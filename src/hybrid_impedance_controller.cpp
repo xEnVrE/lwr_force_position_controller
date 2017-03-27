@@ -94,6 +94,7 @@ namespace lwr_controllers {
     pub_xdot_des_ = n.advertise<geometry_msgs::WrenchStamped>("xdot_des", 1000);
     pub_xdotdot_des_ = n.advertise<geometry_msgs::WrenchStamped>("xdotdot_des", 1000);
     pub_error_ = n.advertise<geometry_msgs::WrenchStamped>("error", 1000);
+    pub_acc_ = n.advertise<geometry_msgs::WrenchStamped>("acc_cmd", 1000);
 
     return true;
   }
@@ -209,6 +210,9 @@ namespace lwr_controllers {
 	publish_data(pub_force_, ws_F_ee);
 	publish_data(pub_force_des_, KDL::Wrench(KDL::Vector(0, 0, fz_des),\
 						 KDL::Vector(0, 0, 0)));
+	publish_data(pub_acc_, KDL::Wrench(KDL::Vector(acc_cmd(0), acc_cmd(1), acc_cmd(2)), \
+					   KDL::Vector(acc_cmd(3), acc_cmd(4), acc_cmd(5))));
+	publish_torques();
 
 	if(enable_force_)
 	  {

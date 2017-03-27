@@ -34,6 +34,7 @@ namespace lwr_controllers
     void set_ws_base_angles(double alpha, double beta, double gamma);
     void set_command(Eigen::VectorXd& commanded_acceleration);
     void load_calib_data(double& total_mass, KDL::Vector& p_sensor_tool_com);
+    void publish_torques();
 
   private:
     void force_torque_callback(const geometry_msgs::WrenchStamped::ConstPtr& msg);
@@ -99,6 +100,9 @@ namespace lwr_controllers
 
     // use simulation flag
     bool use_simulation_;
+
+    // publisher
+    ros::Publisher pub_torques_;
 
   };
 

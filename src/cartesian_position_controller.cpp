@@ -101,6 +101,8 @@ namespace lwr_controllers {
     // advertise topics
     pub_error_ = n.advertise<lwr_force_position_controllers::CartesianPositionJointsMsg>("error", 1000);
     pub_q_des_ = n.advertise<lwr_force_position_controllers::CartesianPositionJointsMsg>("q_des", 1000);
+    pub_acc_ = n.advertise<lwr_force_position_controllers::CartesianPositionJointsMsg>("acc_cmd", 1000);
+    pub_tau_ = n.advertise<lwr_force_position_controllers::CartesianPositionJointsMsg>("tau", 1000);
 
     if(use_simulation_)
       {
@@ -267,6 +269,8 @@ namespace lwr_controllers {
 	// publish data
 	publish_data(pub_error_, q_error);
 	publish_data(pub_q_des_, traj_des_.q);
+	publish_data(pub_acc_, tau_cmd);
+	publish_data(pub_tau_, B_tau_cmd);
       }
   }
 

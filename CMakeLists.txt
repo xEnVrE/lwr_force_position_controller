@@ -27,6 +27,7 @@ add_message_files(
    HybridImpedanceCommandGainsMsg.msg
    HybridImpedanceSwitchForcePosMsg.msg
    CartesianPositionJointsMsg.msg
+   CartesianInverseTorquesMsg.msg
 )
 
 add_service_files(
