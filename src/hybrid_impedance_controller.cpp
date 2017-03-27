@@ -4,6 +4,7 @@
 #include <angles/angles.h>
 #include <geometry_msgs/WrenchStamped.h>
 
+#define DEFAULT_FORCEZ0 -0.35
 #define DEFAULT_KP_POS 1200
 #define DEFAULT_KP_ATT 1200
 #define DEFAULT_KP_GAMMA 25000
@@ -19,6 +20,7 @@
 #define P2P_COEFF_5 6.0
 #define FORCE_REF_COEFF_3 -2
 #define FORCE_REF_COEFF_2 3
+
 
 namespace lwr_controllers {
 
@@ -113,7 +115,7 @@ namespace lwr_controllers {
 
     // set default trajectory (force and position)
     set_default_pos_traj();
-    set_default_force_traj();
+    set_default_force_traj(DEFAULT_FORCEZ0);
     
     // set z position control
     enable_force_ = false;
@@ -267,14 +269,16 @@ namespace lwr_controllers {
 
   }
 
-  void HybridImpedanceController::set_default_force_traj()
+  void HybridImpedanceController::set_default_force_traj(double fz0)
   {
     
     // set force trajectory constants
     for(int i = 0; i<3; i++)
       force_ref_const_(i)  = 0;
-    force_ref_const_(0) = -0.35;
-    prev_fz_setpoint_ = -0.35;
+    force_ref_const_(0) = fz0;
+    prev_fz_setpoint_ = fz0;
+
+    default_fz_ = fz0;
 
     // reset the time
     time_force_ = force_ref_duration_;
@@ -381,6 +385,8 @@ namespace lwr_controllers {
 							  lwr_force_position_controllers::HybridImpedanceSwitchForcePos::Response &res)
   {
 
+    double forcez0 = req.command.forcez0;
+    
     p2p_traj_mutex_.lock();
     
     set_default_pos_traj();
@@ -389,7 +395,7 @@ namespace lwr_controllers {
 
     force_traj_mutex_.lock();
 
-    set_default_force_traj();	
+    set_default_force_traj(forcez0);	
     enable_force_ = req.command.enable_force_z;
 
     force_traj_mutex_.unlock();
@@ -443,6 +449,7 @@ namespace lwr_controllers {
     // get force
     res.command.forcez = prev_fz_setpoint_;
     res.command.force_ref_duration = force_ref_duration_;
+    res.command.forcez0 = default_fz_;
 
     // get elapsed time
     res.command.elapsed_time = time_force_;

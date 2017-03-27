@@ -24,7 +24,7 @@ namespace lwr_controllers
 
   private:
     void set_default_pos_traj();
-    void set_default_force_traj();
+    void set_default_force_traj(double fz0);
     bool set_cmd_traj_pos(lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Request &req, \
 			  lwr_force_position_controllers::HybridImpedanceCommandTrajPos::Response &res);
     bool set_cmd_traj_force(lwr_force_position_controllers::HybridImpedanceCommandTrajForce::Request &req, \
@@ -71,6 +71,7 @@ namespace lwr_controllers
     double time_;
 
     // hybrid impedance controller (force)
+    double default_fz_;
     double prev_fz_setpoint_;
     double km_f_, kd_f_;
     double force_ref_duration_;
