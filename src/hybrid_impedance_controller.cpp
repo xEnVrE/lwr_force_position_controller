@@ -5,14 +5,23 @@
 #include <geometry_msgs/WrenchStamped.h>
 
 #define DEFAULT_FORCEZ0 -0.35
-#define DEFAULT_KP_POS 1200
-#define DEFAULT_KP_ATT 1200
-#define DEFAULT_KP_GAMMA 25000
-#define DEFAULT_KD_POS 50
-#define DEFAULT_KD_ATT 50
-#define DEFAULT_KD_GAMMA 50
+// #define DEFAULT_KP_POS 1200
+// #define DEFAULT_KP_ATT 1200
+// #define DEFAULT_KP_GAMMA 25000
+// #define DEFAULT_KD_POS 50
+// #define DEFAULT_KD_ATT 50
+// #define DEFAULT_KD_GAMMA 50
+
+#define DEFAULT_KP_POS 450
+#define DEFAULT_KP_ATT 450
+#define DEFAULT_KP_GAMMA 450
+#define DEFAULT_KD_POS 30
+#define DEFAULT_KD_ATT 30
+#define DEFAULT_KD_GAMMA 30
+
 #define DEFAULT_KM_F 1
 #define DEFAULT_KD_F 25
+
 #define DEFAULT_P2P_TRAJ_DURATION 5.0
 #define DEFAULT_FORCE_TRAJ_DURATION 5.0
 #define P2P_COEFF_3 10.0

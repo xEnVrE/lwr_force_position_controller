@@ -20,14 +20,25 @@
 //-------------------------------------
 // GAIN CONSTANTS
 //-------------------------------------
-#define DEFAULT_KP 800
-#define DEFAULT_KP_A4 1000
-#define DEFAULT_KP_A5 1000
-#define DEFAULT_KP_A6 18000
+// #define DEFAULT_KP 800
+// #define DEFAULT_KP_A4 1000
+// #define DEFAULT_KP_A5 1000
+// #define DEFAULT_KP_A6 18000
+// #define DEFAULT_KD 30
+// #define DEFAULT_KD_A4 30
+// #define DEFAULT_KD_A5 30
+// #define DEFAULT_KD_A6 30
+
+
+#define DEFAULT_KP 700
+#define DEFAULT_KP_A4 700
+#define DEFAULT_KP_A5 700
+#define DEFAULT_KP_A6 700
 #define DEFAULT_KD 30
 #define DEFAULT_KD_A4 30
 #define DEFAULT_KD_A5 30
 #define DEFAULT_KD_A6 30
+
 
 //------------------------------------------------------------------------------
 //TRAJECTORY GENERATION CONSTANTS
