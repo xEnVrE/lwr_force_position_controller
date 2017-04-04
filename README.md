@@ -1,5 +1,8 @@
 # Hybrid Force Position Controllers for Kuka LWR
 
+[![Hybrid Impedance Control (Kuka LWR 4+)](https://img.youtube.com/vi/UjXSAwY_dkc/0.jpg)](http://www.youtube.com/watch?v=UjXSAwY_dkc)
+
+
 ## Overview
 This package contains three controllers:
 - [__cartesian_position_controller__](src/cartesian_position_controller.cpp): an operational space controller required to
