@@ -2,6 +2,7 @@
 
 [![Hybrid Impedance Control (Kuka LWR 4+)](https://img.youtube.com/vi/0tVq7SOc8s8/0.jpg)](https://www.youtube.com/watch?v=0tVq7SOc8s8)
 
+Authors: [Nicola Piga](https://github.com/xenvre) and [Giulio Romualdi](https://github.com/giulioromualdi)
 
 ## Overview
 This package contains three controllers:
